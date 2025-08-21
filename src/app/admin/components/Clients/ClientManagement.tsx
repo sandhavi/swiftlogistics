@@ -67,7 +67,7 @@ export default function ClientManagement() {
                         id: doc.id,
                         fullName: data.fullName || 'Unknown',
                         email: data.email || '',
-                        phoneNumber: data.phoneNumber || '',
+                        phoneNumber: data.phone || data.phoneNumber || 'N/A',
                         company: data.company || '',
                         address: data.address || '',
                         joinDate: joinDate.toISOString(),

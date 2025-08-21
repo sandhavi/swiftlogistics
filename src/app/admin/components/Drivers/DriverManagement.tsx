@@ -61,7 +61,8 @@ export default function DriverManagement() {
                         id: d.id,
                         fullName: data.fullName || 'Unnamed Driver',
                         email: data.email || '',
-                        phoneNumber: data.phoneNumber || 'N/A',
+                        // Firestore stores this as 'phone' from registration; fall back to legacy 'phoneNumber'
+                        phoneNumber: data.phone || data.phoneNumber || 'N/A',
                         vehicleType: data.vehicleType || 'Unassigned',
                         licenseNumber: data.licenseNumber || 'N/A',
                         joinDate: joinDate.toISOString(),
@@ -88,7 +89,7 @@ export default function DriverManagement() {
             setIsLoading(true);
             setError(null);
             try {
-                const ordersQ = query(collection(db, 'orders'), where('driverId', '==', selectedDriver.id));
+                const ordersQ = query(collection(db, 'orders'), where('driverId', '==', selectedDriver!.id));
                 const snap = await getDocs(ordersQ);
                 const deliveries: Delivery[] = [];
                 let completedCount = 0;
@@ -131,7 +132,7 @@ export default function DriverManagement() {
                 }
                 // Update driver stats locally (without persisting)
                 setDeliveryHistory(deliveries);
-                setDrivers(prev => prev.map(dr => dr.id === selectedDriver.id ? {
+                setDrivers(prev => prev.map(dr => dr.id === selectedDriver!.id ? {
                     ...dr,
                     completedDeliveries: completedCount,
                     rating: ratingCount ? parseFloat((ratingSum / ratingCount).toFixed(1)) : dr.rating
