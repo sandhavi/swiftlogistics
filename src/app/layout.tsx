@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Navbar from '@/app/components/Navbar';
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -66,7 +65,6 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <body className={`${geistSans.variable} ${geistMono.variable} bg-gray-50 text-gray-900 min-h-full`}>
         <div className="min-h-screen flex flex-col">
-          <Navbar />
           <main className="flex-1">
             {children}
           </main>
@@ -74,7 +72,6 @@ export default function RootLayout({
             <div className="container mx-auto px-4">
               <div className="text-center text-gray-600">
                 <p>&copy; 2025 SwiftLogistics (Pvt) Ltd. All rights reserved.</p>
-                <p className="text-sm mt-2">Advanced Middleware Architecture for Modern Logistics</p>
               </div>
             </div>
           </footer>
