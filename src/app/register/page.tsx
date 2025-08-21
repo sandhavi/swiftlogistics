@@ -18,6 +18,7 @@ export default function SignUpPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [focusedField, setFocusedField] = useState("");
+    const router = useRouter();
 
     const passwordValidation = {
         length: password.length >= 8,
