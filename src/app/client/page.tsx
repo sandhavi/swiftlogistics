@@ -269,12 +269,12 @@ export default function ClientDashboard() {
                 </svg>
                 <span>Refresh</span>
               </button>
-              {/* <button
+              <button
                 onClick={() => setShowOrderForm(true)}
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                className="bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-6 py-3 rounded-lg"
               >
-                + New Order
-              </button> */}
+                My Cart 🛒
+              </button>
             </div>
           </div>
         </div>
@@ -420,7 +420,7 @@ export default function ClientDashboard() {
         {modalVisible && selectedProduct && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4 relative">
-              <h2 className="text-2xl font-bold mb-6">
+              <h2 className="text-2xl font-bold mb-6 text-gray-900">
                 {selectedProduct.name}
               </h2>
 
@@ -442,16 +442,16 @@ export default function ClientDashboard() {
               <div className="flex items-center space-x-3 mb-6">
                 <button
                   onClick={() => decrementQuantity(selectedProduct.id)}
-                  className="px-3 py-1 bg-gray-200 rounded"
+                  className="px-3 py-1 bg-gray-200 rounded text-gray-900"
                 >
                   -
                 </button>
-                <span className="text-lg font-medium">
+                <span className="text-lg font-medium text-gray-900">
                   {quantities[selectedProduct.id] || 1}
                 </span>
                 <button
                   onClick={() => incrementQuantity(selectedProduct.id)}
-                  className="px-3 py-1 bg-gray-200 rounded"
+                  className="px-3 py-1 bg-gray-200 rounded text-gray-900"
                 >
                   +
                 </button>
@@ -479,7 +479,7 @@ export default function ClientDashboard() {
                 </button>
                 <button
                   onClick={() => setModalVisible(false)}
-                  className="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-100"
+                  className="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-100 text-gray-900"
                 >
                   Cancel
                 </button>
@@ -508,9 +508,9 @@ export default function ClientDashboard() {
                   key={product.id}
                   className="border rounded p-4 mr-4 w-60 flex-shrink-0"
                   onClick={() => {
-                      setSelectedProduct(product);
-                      setModalVisible(true);
-                    }}
+                    setSelectedProduct(product);
+                    setModalVisible(true);
+                  }}
                 >
                   {/* <div className="mb-2 h-40 flex justify-center items-center bg-gray-100 rounded">
                     {product.image ? (
@@ -523,7 +523,7 @@ export default function ClientDashboard() {
                       "Image not found"
                     )}
                   </div> */}
-                  <h3 className="font-semibold mb-1">
+                  <h3 className="font-semibold mb-1 text-gray-900">
                     {product.name || "Unnamed Product"}
                   </h3>
                   <p className="text-gray-600 mb-1">{product.price || "N/A"}</p>
@@ -532,21 +532,32 @@ export default function ClientDashboard() {
                   </p>
                   <div className="flex items-center space-x-2 mb-3">
                     <button
-                      onClick={() => decrementQuantity(product.id)}
-                      className="px-2 py-1 bg-gray-200 rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        decrementQuantity(product.id);
+                      }}
+                      className="px-2 py-1 bg-gray-200 rounded text-gray-900"
                     >
                       -
                     </button>
-                    <span>{quantities[product.id] || 1}</span>
+                    <span className="text-gray-900">
+                      {quantities[product.id] || 1}
+                    </span>
                     <button
-                      onClick={() => incrementQuantity(product.id)}
-                      className="px-2 py-1 bg-gray-200 rounded"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        incrementQuantity(product.id);
+                      }}
+                      className="px-2 py-1 bg-gray-200 rounded text-gray-900"
                     >
                       +
                     </button>
                   </div>
                   <button
-                    onClick={() => addToCart(product)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      addToCart(product);
+                    }}
                     className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                   >
                     Add to Cart
@@ -591,7 +602,7 @@ export default function ClientDashboard() {
                         "Image not found"
                       )}
                     </div> */}
-                    <h3 className="font-semibold mb-1">
+                    <h3 className="font-semibold mb-1 text-gray-900">
                       {product.name || "Unnamed Product"}
                     </h3>
                     <p className="text-gray-600 mb-1">
@@ -602,15 +613,21 @@ export default function ClientDashboard() {
                     </p>
                     <div className="flex items-center space-x-2 mb-3">
                       <button
-                        onClick={() => decrementQuantity(product.id)}
-                        className="px-2 py-1 bg-gray-200 rounded"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          decrementQuantity(product.id);
+                        }}
+                        className="px-2 py-1 bg-gray-200 rounded text-gray-900"
                       >
                         -
                       </button>
-                      <span>{quantities[product.id] || 1}</span>
+                      <span className="text-gray-900">{quantities[product.id] || 1}</span>
                       <button
-                        onClick={() => incrementQuantity(product.id)}
-                        className="px-2 py-1 bg-gray-200 rounded"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          incrementQuantity(product.id);
+                        }}
+                        className="px-2 py-1 bg-gray-200 rounded text-gray-900"
                       >
                         +
                       </button>
@@ -626,7 +643,7 @@ export default function ClientDashboard() {
               </div>
               <button
                 onClick={() => setShowAllProducts(false)}
-                className="mt-4 bg-gray-300 py-2 px-4 rounded hover:bg-gray-400"
+                className="mt-4 bg-gray-300 py-2 px-4 rounded hover:bg-gray-400 text-gray-900"
               >
                 Show Less
               </button>
