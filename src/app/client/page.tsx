@@ -1,4 +1,7 @@
 'use client';
+import { auth } from '@/app/lib/firebase';
+import { signOut } from 'firebase/auth';
+
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import OrderList from '@/app/components/OrderList';
@@ -7,6 +10,19 @@ import { Order, Package, UpdateEvent } from '@/app/lib/types';
 type OrderRow = Pick<Order, 'id' | 'clientId' | 'status' | 'routeId'> & { packages: Pick<Package, 'id' | 'description' | 'status'>[] };
 
 export default function ClientDashboard() {
+    const [userName, setUserName] = useState<string | null>(null);
+
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (user) {
+            setUserName(user.displayName || user.email);
+        }
+    }, []);
+
+    const handleLogout = async () => {
+        await signOut(auth);
+        window.location.href = '/login';
+    };
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [submitting, setSubmitting] = useState(false);
     const [showOrderForm, setShowOrderForm] = useState(false);
@@ -132,6 +148,22 @@ export default function ClientDashboard() {
 
     return (
         <div className="min-h-screen bg-gray-50">
+            {/* User Info and Logout */}
+            <div className="bg-white shadow-sm border-b">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-end py-2">
+                    {userName && (
+                        <div className="flex items-center gap-4">
+                            <span className="text-gray-700 font-medium">Welcome, {userName}</span>
+                            <button
+                                onClick={handleLogout}
+                                className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
             {/* Header */}
             <div className="bg-white shadow-sm border-b">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
