@@ -7,9 +7,17 @@ import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { useEffect, useRef, useState, useCallback } from "react";
 import OrderList from "@/app/components/OrderList";
 import { Order, Package, UpdateEvent } from "@/app/lib/types";
+import { toast } from "react-toastify";
 
 type OrderRow = Pick<Order, "id" | "clientId" | "status" | "routeId"> & {
   packages: Pick<Package, "id" | "description" | "status">[];
+};
+
+type cartItem = {
+  id: string;
+  name: string;
+  price?: string;
+  quantity: number;
 };
 
 export default function ClientDashboard() {
@@ -21,6 +29,7 @@ export default function ClientDashboard() {
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [cartItems, setCartItems] = useState<cartItem[]>([]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -147,8 +156,53 @@ export default function ClientDashboard() {
 
   function addToCart(product: any) {
     const qty = quantities[product.id] || 1;
-    console.log(`Add to cart: ${product.name} x${qty}`);
-    // Implement your cart logic here
+    setCartItems((prev) => {
+      const existingIndex = prev.findIndex((item) => item.id === product.id);
+      if (existingIndex >= 0) {
+        const updated = [...prev];
+        updated[existingIndex].quantity += qty;
+        return updated;
+      }
+      // Add new product to cart
+      return [
+        ...prev,
+        {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: qty,
+        },
+      ];
+    });
+    setAddedMessage(product.id);
+    toast.success(`${product.name} added to cart (${qty})`);
+    setTimeout(() => setAddedMessage(null), 1500);
+  }
+
+  function incrementCartQuantity(id: string) {
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, quantity: item.quantity + 1 } : item
+      )
+    );
+  }
+
+  function decrementCartQuantity(id: string) {
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.id === id && item.quantity > 1
+          ? { ...item, quantity: item.quantity - 1 }
+          : item
+      )
+    );
+  }
+
+  function removeFromCart(id: string) {
+    setCartItems((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  function clearCart() {
+    setCartItems([]);
   }
 
   async function submitOrder() {
@@ -271,14 +325,116 @@ export default function ClientDashboard() {
               </button>
               <button
                 onClick={() => setShowOrderForm(true)}
-                className="bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-6 py-3 rounded-lg"
+                className="relative bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors px-6 py-3 rounded-lg"
               >
                 My Cart 🛒
+                {cartItems.length > 0 && (
+                  <span className="absolute top-1 right-1 block h-3 w-3 rounded-full bg-red-600" />
+                )}
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {showOrderForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-xl w-full p-6 mx-4 relative">
+            {/* Header with title and count */}
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">
+                My Cart Items
+              </h2>
+              <span className="text-gray-700 font-semibold">
+                {cartItems.length}{" "}
+                {cartItems.length === 1 ? "product" : "products"}
+              </span>
+            </div>
+
+            {/* Cart list */}
+            {cartItems.length === 0 ? (
+              <p className="text-gray-600">Your cart is empty.</p>
+            ) : (
+              <ul className="divide-y divide-gray-200 max-h-64 overflow-y-auto mb-6">
+                {cartItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="py-3 flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">{item.name}</p>
+                      <p className="text-sm text-gray-600">
+                        {item.price || "N/A"}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => decrementCartQuantity(item.id)}
+                        className="px-2 py-1 bg-gray-200 rounded text-gray-900"
+                      >
+                        -
+                      </button>
+                      <span className="w-6 text-center text-gray-900">
+                        {item.quantity}
+                      </span>
+                      <button
+                        onClick={() => incrementCartQuantity(item.id)}
+                        className="px-2 py-1 bg-gray-200 rounded text-gray-900"
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => removeFromCart(item.id)}
+                        className="ml-3 text-red-600 hover:text-red-800 font-semibold"
+                        aria-label={`Remove ${item.name} from cart`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {/* Footer buttons */}
+            <div className="flex justify-between items-center space-x-4 mt-4">
+              <button
+                onClick={clearCart}
+                className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                disabled={cartItems.length === 0}
+              >
+                Clear Cart
+              </button>
+              <button
+                onClick={() => setShowOrderForm(false)}
+                className="px-6 py-2 bg-gray-300 text-gray-900 rounded hover:bg-gray-400"
+              >
+                Back to Products
+              </button>
+              <button
+                onClick={() => {
+                  if (cartItems.length === 0) return;
+                  // Navigate to checkout page with cart data or implement checkout logic here
+                  // Example: window.location.href = `/checkout?cart=${encodeURIComponent(JSON.stringify(cartItems))}`;
+                  alert(
+                    "Proceeding to checkout with " +
+                      cartItems.length +
+                      " products."
+                  );
+                }}
+                className={`px-6 py-2 rounded text-white ${
+                  cartItems.length === 0
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
+                disabled={cartItems.length === 0}
+              >
+                Checkout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats */}
@@ -466,7 +622,7 @@ export default function ClientDashboard() {
                   }}
                   className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  Add to Cart
+                  Add to Cart 🛒
                 </button>
                 <button
                   onClick={() => {
@@ -560,7 +716,7 @@ export default function ClientDashboard() {
                     }}
                     className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                   >
-                    Add to Cart
+                    Add to Cart 🛒
                   </button>
                 </div>
               ))}
@@ -621,7 +777,9 @@ export default function ClientDashboard() {
                       >
                         -
                       </button>
-                      <span className="text-gray-900">{quantities[product.id] || 1}</span>
+                      <span className="text-gray-900">
+                        {quantities[product.id] || 1}
+                      </span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -633,10 +791,13 @@ export default function ClientDashboard() {
                       </button>
                     </div>
                     <button
-                      onClick={() => addToCart(product)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addToCart(product);
+                      }}
                       className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
                     >
-                      Add to Cart
+                      Add to Cart 🛒
                     </button>
                   </div>
                 ))}

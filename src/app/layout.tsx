@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import ToastProvider from "./ToastProvider";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -68,6 +69,7 @@ export default function RootLayout({
           <main className="flex-1">
             {children}
           </main>
+          <ToastProvider />
           <footer className="bg-white border-t border-gray-200 py-8 mt-auto">
             <div className="container mx-auto px-4">
               <div className="text-center text-gray-600">
