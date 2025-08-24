@@ -414,13 +414,8 @@ export default function ClientDashboard() {
               <button
                 onClick={() => {
                   if (cartItems.length === 0) return;
-                  // Navigate to checkout page with cart data or implement checkout logic here
-                  // Example: window.location.href = `/checkout?cart=${encodeURIComponent(JSON.stringify(cartItems))}`;
-                  alert(
-                    "Proceeding to checkout with " +
-                      cartItems.length +
-                      " products."
-                  );
+                  localStorage.setItem("cart", JSON.stringify(cartItems));
+                  window.location.href = "/clientCheckout";
                 }}
                 className={`px-6 py-2 rounded text-white ${
                   cartItems.length === 0
@@ -627,7 +622,11 @@ export default function ClientDashboard() {
                 <button
                   onClick={() => {
                     const qty = quantities[selectedProduct.id] || 1;
-                    window.location.href = `/checkout?productId=${selectedProduct.id}&qty=${qty}`;
+                    const params = new URLSearchParams({
+                      productId: selectedProduct.id,
+                      qty: qty.toString(),
+                    });
+                    window.location.href = `/clientCheckout?${params.toString()}`;
                   }}
                   className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
                 >
