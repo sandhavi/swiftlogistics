@@ -13,17 +13,25 @@ type OrderRow = Pick<Order, "id" | "clientId" | "status" | "routeId"> & {
   packages: Pick<Package, "id" | "description" | "status">[];
 };
 
+type Product ={
+  id: string;
+  name: string;
+  price?: number;
+  quantity?: number;
+  // image?: string;
+}
+
 type cartItem = {
   id: string;
   name: string;
-  price?: string;
+  price?: number;
   quantity: number;
 };
 
 export default function ClientDashboard() {
   const [userName, setUserName] = useState<string | null>(null);
   const db = getFirestore();
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
@@ -154,7 +162,7 @@ export default function ClientDashboard() {
     }));
   }
 
-  function addToCart(product: any) {
+  function addToCart(product: Product) {
     const qty = quantities[product.id] || 1;
     setCartItems((prev) => {
       const existingIndex = prev.findIndex((item) => item.id === product.id);
@@ -175,7 +183,7 @@ export default function ClientDashboard() {
       ];
     });
     setAddedMessage(product.id);
-    toast.success(`${product.name} added to cart (${qty})`);
+    toast.success(`${product.name} added to cart!`);
     setTimeout(() => setAddedMessage(null), 1500);
   }
 
