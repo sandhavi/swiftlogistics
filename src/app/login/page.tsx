@@ -1,8 +1,9 @@
 
 "use client";
 import { useState } from "react";
-import { Eye, EyeOff, Mail, Lock, AlertCircle, Sparkles, ArrowRight, Shield, Users, Heart } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, AlertCircle, Sparkles, ArrowRight } from "lucide-react";
 import { auth, db } from "@/app/lib/firebase";
+import { fetchUserRole } from "@/app/lib/auth";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
@@ -16,7 +17,7 @@ export default function LoginPage() {
     const [focusedField, setFocusedField] = useState("");
     const router = useRouter();
 
-    const handleLogin = async (e) => {
+    const handleLogin = async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.preventDefault();
         setIsLoading(true);
         setError("");
@@ -27,12 +28,8 @@ export default function LoginPage() {
             return;
         }
 
-        // Hardcoded admin credentials check
-        if (email === "aadmin@gmail.com" && password === "admin@1234") {
-            router.push("/admin");
-            setIsLoading(false);
-            return;
-        }
+        // Hardcoded admin credentials check (fallback for demo). Prefer Firestore role or ADMIN_EMAILS.
+        const isDemoAdmin = email === "aadmin@gmail.com" && password === "admin@1234";
 
         try {
             // Sign in with Firebase Auth
@@ -46,13 +43,16 @@ export default function LoginPage() {
                 return;
             }
             const userData = userDoc.data();
-            // Redirect based on accountType
-            if (userData.accountType === "client") {
+            // Resolve role with helper (supports email allowlist for admins)
+            const role = await fetchUserRole(user);
+            if (role === "admin" || isDemoAdmin) {
+                router.push("/admin");
+            } else if (role === "client" || userData.accountType === "client") {
                 router.push("/client");
-            } else if (userData.accountType === "driver") {
+            } else if (role === "driver" || userData.accountType === "driver") {
                 router.push("/driver");
             } else {
-                router.push("/dashboard");
+                router.push("/");
             }
         } catch (err) {
             if (err instanceof Error) {
@@ -192,7 +192,7 @@ export default function LoginPage() {
                     <div className="mt-8 text-center">
                         <p className="text-sm text-gray-600">
                             Don't have an account?{" "}
-                            <a href="/signup" className="text-purple-600 hover:text-purple-700 font-semibold">
+                            <a href="/register" className="text-purple-600 hover:text-purple-700 font-semibold">
                                 Create account
                             </a>
                         </p>
@@ -203,13 +203,13 @@ export default function LoginPage() {
                         <p className="text-sm font-medium text-purple-900 mb-2">User Dashboard</p>
                         <div className="flex flex-col sm:flex-row gap-2">
                             <a
-                                href="#"
+                                href="/register?type=client"
                                 className="flex-1 text-center px-3 py-2 bg-white border border-purple-200 rounded-lg text-sm text-purple-700 hover:bg-purple-100 transition-colors"
                             >
                                 Client Registration
                             </a>
                             <a
-                                href="#"
+                                href="/register?type=driver"
                                 className="flex-1 text-center px-3 py-2 bg-white border border-purple-200 rounded-lg text-sm text-purple-700 hover:bg-purple-100 transition-colors"
                             >
                                 Driver Registration
@@ -220,11 +220,11 @@ export default function LoginPage() {
                     {/* Footer Links */}
                     <div className="mt-6 text-center text-xs text-gray-500">
                         <div className="flex justify-center space-x-4">
-                            <a href="#" className="hover:text-gray-700">Privacy Policy</a>
+                            <a href="/privacy" className="hover:text-gray-700">Privacy Policy</a>
                             <span>•</span>
-                            <a href="#" className="hover:text-gray-700">Terms of Service</a>
+                            <a href="/terms" className="hover:text-gray-700">Terms of Service</a>
                             <span>•</span>
-                            <a href="#" className="hover:text-gray-700">Help Center</a>
+                            <a href="/help" className="hover:text-gray-700">Help Center</a>
                         </div>
                     </div>
                 </div>
