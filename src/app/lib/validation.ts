@@ -2,8 +2,14 @@ import { z, ZodTypeAny, SafeParseReturnType } from 'zod';
 
 export const PackageSchema = z.object({
     description: z.string().min(1).max(200),
-    address: z.string().min(3).max(200)
-});
+    address: z.string().min(3).max(200),
+    stockItemId: z.string().min(1).max(200).optional(),
+    quantity: z.number().int().positive().optional(),
+}).refine((val) => {
+    // If stockItemId is provided, quantity must be provided as well
+    if (val.stockItemId && typeof val.quantity !== 'number') return false;
+    return true;
+}, { message: 'quantity is required when stockItemId is provided', path: ['quantity'] });
 
 export const OrderCreateSchema = z.object({
     clientId: z.string().min(3).max(100),
