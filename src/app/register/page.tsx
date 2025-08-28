@@ -1,10 +1,10 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, Check, X, User, Mail, Lock, Shield, Heart, Sparkles, Phone, Truck, Building2, MapPin, IdCard } from "lucide-react";
 import { auth, db } from "@/app/lib/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 export default function SignUpPage() {
     const [fullName, setFullName] = useState("");
@@ -28,6 +28,7 @@ export default function SignUpPage() {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [focusedField, setFocusedField] = useState("");
     const router = useRouter();
+    const searchParams = useSearchParams();
 
     const passwordValidation = {
         length: password.length >= 8,
@@ -48,6 +49,13 @@ export default function SignUpPage() {
         return "border-gray-200 hover:border-gray-300";
     };
     const confirmPasswordBorder = getConfirmPasswordBorder();
+
+    useEffect(() => {
+        const type = (searchParams?.get('type') || '').toLowerCase();
+        if (type === 'client' || type === 'driver') {
+            setAccountType(type);
+        }
+    }, [searchParams]);
 
     const handleSignUp = async (e: React.FormEvent<HTMLButtonElement>) => {
         e.preventDefault();
