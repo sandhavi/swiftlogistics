@@ -1,15 +1,37 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AdminHeader from './components/Dashboard/AdminHeader';
 import AdminSidebar from './components/Dashboard/AdminSidebar';
 import DashboardStats from './components/Dashboard/DashboardStats';
 import StockManagement from './components/Stock/StockManagement';
 import DriverManagement from './components/Drivers/DriverManagement';
 import ClientManagement from './components/Clients/ClientManagement';
+import { getCurrentUserAndRole } from '@/app/lib/auth';
+import { useRouter } from 'next/navigation';
 
 export default function AdminDashboard() {
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [authChecked, setAuthChecked] = useState(false);
+
+    useEffect(() => {
+        (async () => {
+            const { user, role } = await getCurrentUserAndRole();
+            if (!user) {
+                router.replace('/login');
+                return;
+            }
+            if (role !== 'admin') {
+                // Send to their appropriate dashboard
+                if (role === 'client') router.replace('/client');
+                else if (role === 'driver') router.replace('/driver');
+                else router.replace('/');
+                return;
+            }
+            setAuthChecked(true);
+        })();
+    }, [router]);
 
     // Handle tab changes from sidebar
     const handleTabChange = (tab: string) => {
@@ -36,6 +58,12 @@ export default function AdminDashboard() {
                 return <div>Select a tab from the sidebar</div>;
         }
     };
+
+    if (!authChecked) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">Checking access…</div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-100">
