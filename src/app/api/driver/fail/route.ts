@@ -17,21 +17,38 @@ export async function POST(req: Request) {
         reason,
         timestamp: now()
     };
-    
+
     // If any failed, reflect on order level (prototype behavior)
     const anyFailed = order.packages.some(p => p.status === 'FAILED');
     if (anyFailed) {
         order.status = 'FAILED';
     }
-    
+
     // Update in-memory store
     store.upsertOrder(order);
 
     try {
-        // Update in Firestore
+        // Update in Firestore (sanitize undefined fields)
         const orderRef = doc(db, 'orders', order.id);
+        const sanitizedPackages = order.packages.map(p => {
+            const base: any = {
+                id: p.id,
+                description: p.description,
+                address: p.address ?? '',
+                status: p.status,
+            };
+            if (p.proof && Object.keys(p.proof).length > 0) {
+                const sp: any = {};
+                if (p.proof.signatureDataUrl) sp.signatureDataUrl = p.proof.signatureDataUrl;
+                if (p.proof.photoUrl) sp.photoUrl = p.proof.photoUrl;
+                if (typeof p.proof.reason === 'string') sp.reason = p.proof.reason;
+                if (typeof p.proof.timestamp === 'number') sp.timestamp = p.proof.timestamp;
+                if (Object.keys(sp).length > 0) base.proof = sp;
+            }
+            return base;
+        });
         await updateDoc(orderRef, {
-            packages: order.packages,
+            packages: sanitizedPackages,
             status: order.status,
             updatedAt: now()
         });

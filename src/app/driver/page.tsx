@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 type RouteView = Pick<Route, 'id' | 'driverId' | 'status'> & { waypoints: string[]; packageIds: string[] };
-type OrderView = Pick<Order, 'id' | 'routeId'> & { packages: Pick<Package, 'id' | 'description' | 'status' | 'address'>[] };
+type OrderView = Pick<Order, 'id' | 'routeId'> & { createdAt?: number; packages: Pick<Package, 'id' | 'description' | 'status' | 'address'>[] };
 
 export default function DriverDashboard() {
     const router = useRouter();
@@ -47,22 +47,15 @@ export default function DriverDashboard() {
                 headers: { 'x-api-key': 'dev-key' }
             });
             const data = await res.json();
-            setOrders(data.orders || []);
+            const list: OrderView[] = data.orders || [];
+            // Filter orders assigned to this driver (have routeId) and sort by createdAt asc (oldest first)
+            const assigned = list.filter(o => o.routeId);
+            assigned.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+            setOrders(assigned);
             setLastRefresh(new Date());
 
-            // Pick the latest with a route assigned to this driver
-            const withRoute = (data.orders || []).filter((o: OrderView) => o.routeId);
-            if (withRoute.length > 0) {
-                const first = withRoute[0];
-                // route DTO is not directly exposed; reconstruct minimal
-                setRoute({
-                    id: first.routeId,
-                    driverId: driverId || 'unknown',
-                    waypoints: first.packages.map((p: OrderView['packages'][number]) => (p.address ?? 'Unknown')),
-                    status: 'ASSIGNED' as const,
-                    packageIds: first.packages.map((p: OrderView['packages'][number]) => p.id)
-                });
-            }
+            // No single selected route; we will list all orders below
+            setRoute(null);
         } catch (error) {
             console.error('Failed to load orders:', error);
         }
@@ -132,6 +125,21 @@ export default function DriverDashboard() {
         }
     }
 
+    async function markOutForDelivery(packageId: string) {
+        try {
+            await fetch('/api/driver/out', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+                body: JSON.stringify({ packageId })
+            });
+            setTimeout(() => {
+                triggerRefresh();
+            }, 300);
+        } catch (error) {
+            console.error('Failed to mark out for delivery:', error);
+        }
+    }
+
     async function markFailed(packageId: string) {
         try {
             const reason = prompt('Enter failure reason (e.g., recipient not available)') || 'Unknown';
@@ -149,15 +157,13 @@ export default function DriverDashboard() {
         }
     }
 
-    const orderForRoute = route
-        ? orders.find(o => o.routeId === route.id)
-        : undefined;
-
+    // Aggregated stats across all assigned orders
+    const allPkgs = orders.flatMap(o => o.packages);
     const stats = {
-        total: orderForRoute?.packages.length || 0,
-        delivered: orderForRoute?.packages.filter(p => p.status === 'DELIVERED').length || 0,
-        failed: orderForRoute?.packages.filter(p => p.status === 'FAILED').length || 0,
-        pending: orderForRoute?.packages.filter(p => p.status === 'WAITING' || p.status === 'IN_TRANSIT').length || 0
+        total: allPkgs.length,
+        delivered: allPkgs.filter(p => p.status === 'DELIVERED').length,
+        failed: allPkgs.filter(p => p.status === 'FAILED').length,
+        pending: allPkgs.filter(p => p.status === 'WAITING' || p.status === 'IN_TRANSIT').length,
     };
 
     if (!authChecked) {
@@ -171,11 +177,7 @@ export default function DriverDashboard() {
         );
     }
 
-    const routeStatusClass = (status: RouteView['status'] | 'IN_PROGRESS') => {
-        if (status === 'ASSIGNED') return 'bg-blue-50 text-blue-700 border border-blue-200';
-        if (status === 'IN_PROGRESS') return 'bg-amber-50 text-amber-700 border border-amber-200';
-        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
-    };
+    // Route status class helper not used in the multi-order view
 
     return (
         <div className="min-h-screen bg-slate-50 font-poppins">
@@ -257,7 +259,7 @@ export default function DriverDashboard() {
                     </div>
                 )}
 
-                {route && orderForRoute && (
+                {orders.length > 0 && (
                     <>
                         {/* Modern Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -337,10 +339,8 @@ export default function DriverDashboard() {
                                             <RouteIcon className="w-6 h-6 text-white" />
                                         </div>
                                         <div>
-                                            <h2 className="text-xl font-bold text-slate-900">Route #{route.id.slice(-6)}</h2>
-                                            <p className="text-slate-600 text-sm">
-                                                Optimized delivery route • {route.waypoints.length} stops
-                                            </p>
+                                            <h2 className="text-xl font-bold text-slate-900">Assigned Orders</h2>
+                                            <p className="text-slate-600 text-sm">Oldest first • {orders.length} orders</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center space-x-3">
@@ -351,8 +351,8 @@ export default function DriverDashboard() {
                                             <RefreshCw className="w-4 h-4 mr-1.5" />
                                             Refresh
                                         </button>
-                                        <div className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${routeStatusClass(route.status as any)}`}>
-                                            {route.status}
+                                        <div className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                            ACTIVE
                                         </div>
                                     </div>
                                 </div>
@@ -396,35 +396,33 @@ export default function DriverDashboard() {
 
                             <div className="p-6">
                                 {activeTab === 'manifest' && (
-                                    <DriverManifest route={route} order={orderForRoute} onDeliver={markDelivered} onFail={markFailed} />
+                                    <div className="space-y-6">
+                                        {orders.map((o) => (
+                                            <div key={o.id} className="border rounded-2xl overflow-hidden">
+                                                <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                                                    <div>
+                                                        <div className="text-sm text-slate-500">Order</div>
+                                                        <div className="text-lg font-semibold text-slate-900">#{o.id.slice(-6)}</div>
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">Created: {o.createdAt ? new Date(o.createdAt).toLocaleString() : '—'}</div>
+                                                </div>
+                                                <div className="p-6">
+                                                    <DriverManifest
+                                                        route={{ id: o.routeId!, driverId: driverId || 'unknown', status: 'ASSIGNED' }}
+                                                        order={{ id: o.id, packages: o.packages }}
+                                                        onDeliver={(pkgId) => markDelivered(pkgId)}
+                                                        onFail={(pkgId) => markFailed(pkgId)}
+                                                        onOut={(pkgId) => markOutForDelivery(pkgId)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 )}
 
                                 {activeTab === 'route' && (
                                     <div className="space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-lg font-bold text-slate-900">Route Waypoints</h3>
-                                            <div className="flex items-center space-x-2 text-sm text-slate-500">
-                                                <Navigation className="w-4 h-4" />
-                                                <span>{route.waypoints.length} stops planned</span>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                            {route.waypoints.map((waypoint, index) => (
-                                                <div key={`${waypoint}-${index}`} className="flex items-center p-4 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors duration-200">
-                                                    <div className="flex items-center justify-center w-10 h-10 bg-slate-900 text-white rounded-lg mr-4 font-bold text-sm">
-                                                        {index + 1}
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="font-semibold text-slate-900 mb-1">{waypoint}</div>
-                                                        <div className="flex items-center text-sm text-slate-500">
-                                                            <MapPin className="w-4 h-4 mr-1" />
-                                                            Stop {index + 1} of {route.waypoints.length}
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-3 h-3 bg-slate-300 rounded-full"></div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        <div className="text-sm text-slate-500">Route view is not available for multi-order list.</div>
                                     </div>
                                 )}
 
@@ -432,12 +430,10 @@ export default function DriverDashboard() {
                                     <div className="space-y-6">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-lg font-bold text-slate-900">Recent Deliveries</h3>
-                                            <div className="text-sm text-slate-500">
-                                                {orderForRoute.packages.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length} completed
-                                            </div>
+                                            <div className="text-sm text-slate-500">{allPkgs.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length} completed</div>
                                         </div>
                                         <div className="space-y-3">
-                                            {orderForRoute.packages
+                                            {allPkgs
                                                 .filter(p => p.status === 'DELIVERED' || p.status === 'FAILED')
                                                 .map((pkg) => (
                                                     <div key={`${pkg.id}-${pkg.status}`} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -460,7 +456,7 @@ export default function DriverDashboard() {
                                                         </div>
                                                     </div>
                                                 ))}
-                                            {orderForRoute.packages.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length === 0 && (
+                                            {allPkgs.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length === 0 && (
                                                 <div className="text-center py-12 text-slate-500">
                                                     <PackageIcon className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                                                     <p className="text-lg font-medium mb-2">No deliveries completed yet</p>
