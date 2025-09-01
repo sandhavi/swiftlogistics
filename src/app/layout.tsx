@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Poppins, Lora } from "next/font/google";
 import "./globals.css";
 import ToastProvider from "./ToastProvider";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const poppins = Poppins({
+  variable: "--font-poppins", subsets: ["latin"],
+  weight: "400"
+});
+const lora = Lora({ variable: "--font-lora", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "SwiftTrack - Advanced Middleware Architecture for Modern Logistics",
@@ -64,7 +69,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full">
-      <body className={`${geistSans.variable} ${geistMono.variable} bg-gray-50 text-gray-900 min-h-full`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${lora.variable} bg-gray-50 text-gray-900 min-h-full`}>
         <div className="min-h-screen flex flex-col">
           <main className="flex-1">
             {children}
