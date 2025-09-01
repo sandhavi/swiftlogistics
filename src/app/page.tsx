@@ -1,11 +1,11 @@
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 font-poppins tracking-wider">
       {/* Hero Section */}
       <section className="bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center">
-            <h1 className="text-5xl font-bold text-gray-900 mb-6">
+            <h1 className="text-5xl font-bold text-gray-900 mb-6 font-lora">
               Swift Logistics
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
@@ -39,7 +39,7 @@ export default function Home() {
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Our Services</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4 font-lora">Our Services</h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
               Comprehensive logistics solutions tailored to meet your shipping needs
             </p>
@@ -224,7 +224,7 @@ export default function Home() {
       <section className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Why Choose Swift Logistics?</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4 font-lora">Why Choose Swift Logistics?</h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
               We combine cutting-edge technology with exceptional service to deliver unmatched logistics solutions
             </p>
