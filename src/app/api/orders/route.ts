@@ -90,18 +90,18 @@ export async function GET(req: Request) {
                     clientId: data.clientId,
                     status: data.status,
                     routeId: data.routeId || undefined,
-                    packages: (data.packages || []).map((p: any) => ({ 
-                        id: p.id, 
-                        description: p.description, 
+                    packages: (data.packages || []).map((p: any) => ({
+                        id: p.id,
+                        description: p.description,
                         status: p.status,
                         address: p.address || '',
                         proof: p.proof || undefined
                     }))
                 } as any;
-                
+
                 // Sync with in-memory store to keep it updated
                 store.upsertOrder(order);
-                
+
                 return order;
             });
             return NextResponse.json({ orders });
@@ -118,18 +118,19 @@ export async function GET(req: Request) {
                     clientId: data.clientId,
                     status: data.status,
                     routeId: data.routeId || undefined,
-                    packages: (data.packages || []).map((p: any) => ({ 
-                        id: p.id, 
-                        description: p.description, 
-                        status: p.status, 
+                    createdAt: (data.createdAt && typeof data.createdAt.toMillis === 'function') ? data.createdAt.toMillis() : 0,
+                    packages: (data.packages || []).map((p: any) => ({
+                        id: p.id,
+                        description: p.description,
+                        status: p.status,
                         address: p.address,
                         proof: p.proof || undefined
                     }))
                 } as any;
-                
+
                 // Sync with in-memory store to keep it updated
                 store.upsertOrder(order);
-                
+
                 return order;
             });
             return NextResponse.json({ orders });
