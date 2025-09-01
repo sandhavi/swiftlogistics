@@ -210,7 +210,7 @@ export default function ClientDashboard() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-poppins">
         <div className="flex flex-col items-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-slate-900"></div>
           <p className="text-slate-600 font-medium">Loading your dashboard...</p>
@@ -220,7 +220,7 @@ export default function ClientDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 font-poppins">
       {/* Modern Header */}
       <header className="bg-white border-b border-slate-200/60 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -230,8 +230,8 @@ export default function ClientDashboard() {
                 <ShoppingCart className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Client Hub</h1>
-                <p className="text-slate-600 text-sm">Order management & tracking center</p>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight font-lora">Client Hub</h1>
+                <p className="text-slate-600 text-sm font-lora">Order management & tracking center</p>
               </div>
             </div>
 
@@ -258,7 +258,7 @@ export default function ClientDashboard() {
                 </div>
                 <div className="text-left">
                   <p className="text-xs text-slate-500 font-medium">Client</p>
-                  <p className="text-sm font-semibold text-slate-900 truncate max-w-[140px]">
+                  <p className="text-sm font-semibold text-slate-900 truncate max-w-[140px] font-lora">
                     {userName || '—'}
                   </p>
                 </div>
