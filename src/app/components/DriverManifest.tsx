@@ -8,6 +8,7 @@ interface ManifestProps {
     order: OrderView | null;
     onDeliver: (packageId: string) => void;
     onFail: (packageId: string) => void;
+    onOut: (packageId: string) => void;
 }
 
 const getStatusColor = (status: string) => {
@@ -55,7 +56,7 @@ const getStatusIcon = (status: string) => {
     }
 };
 
-export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDeliver, onFail }) => {
+export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDeliver, onFail, onOut }) => {
     if (!route || !order) return null;
 
     const pendingPackages = order.packages.filter(p => p.status === 'WAITING' || p.status === 'IN_TRANSIT');
@@ -117,6 +118,15 @@ export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDelive
                                     </div>
 
                                     <div className="flex flex-col space-y-2 ml-4">
+                                        <button
+                                            onClick={() => onOut(pkg.id)}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                            </svg>
+                                            <span>Out for delivery</span>
+                                        </button>
                                         <button
                                             onClick={() => onDeliver(pkg.id)}
                                             className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
