@@ -162,7 +162,7 @@ export default function DriverDashboard() {
 
     if (!authChecked) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center font-poppins">
                 <div className="flex flex-col items-center space-y-4">
                     <div className="animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-slate-900"></div>
                     <p className="text-slate-600 font-medium">Loading dashboard...</p>
@@ -178,7 +178,7 @@ export default function DriverDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50">
+        <div className="min-h-screen bg-slate-50 font-poppins">
             {/* Modern Header */}
             <header className="bg-white border-b border-slate-200/60 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -187,7 +187,7 @@ export default function DriverDashboard() {
                             <div className="flex items-center justify-center w-12 h-12 bg-slate-900 rounded-xl">
                                 <Truck className="w-6 h-6 text-white" />
                             </div>
-                            <div>
+                            <div className='font-lora'>
                                 <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Driver Hub</h1>
                                 <p className="text-slate-600 text-sm">Your delivery command center</p>
                             </div>
@@ -208,7 +208,7 @@ export default function DriverDashboard() {
                                 </div>
                                 <div className="text-left">
                                     <p className="text-xs text-slate-500 font-medium">Driver</p>
-                                    <p className="text-sm font-semibold text-slate-900 truncate max-w-[140px]">
+                                    <p className="text-sm font-semibold text-slate-900 font-lora truncate max-w-[140px]">
                                         {driverName || '—'}
                                     </p>
                                 </div>
