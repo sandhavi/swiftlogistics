@@ -43,7 +43,7 @@ export default function AdminDashboard() {
         switch (activeTab) {
             case 'dashboard':
                 return (
-                    <div className="space-y-6">
+                    <div className="space-y-6 font-poppins">
                         <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
                         <DashboardStats />
                     </div>
@@ -61,12 +61,12 @@ export default function AdminDashboard() {
 
     if (!authChecked) {
         return (
-            <div className="min-h-screen flex items-center justify-center">Checking access…</div>
+            <div className="min-h-screen flex items-center justify-center font-poppins">Checking access…</div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gray-100">
+        <div className="min-h-screen bg-gray-100 font-poppins">
             <AdminHeader />
 
             <div className="flex">
