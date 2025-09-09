@@ -35,7 +35,7 @@ export default function ClientDashboard() {
     const [showAllProducts, setShowAllProducts] = useState(false);
     const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
     const [addedMessage, setAddedMessage] = useState<string | null>(null);
-    const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [modalVisible, setModalVisible] = useState(false);
     const [cartItems, setCartItems] = useState<cartItem[]>([]);
 
@@ -75,10 +75,15 @@ export default function ClientDashboard() {
         try {
             const productsCol = collection(db, "stock");
             const productsSnapshot = await getDocs(productsCol);
-            const productsList = productsSnapshot.docs.map((doc) => ({
-                id: doc.id,
-                ...doc.data(),
-            }));
+            const productsList = productsSnapshot.docs.map((doc) => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    name: data.name || 'Unknown Product',
+                    price: data.price,
+                    quantity: data.quantity,
+                } as Product;
+            });
             setProducts(productsList);
         } catch (error) {
             console.error("Failed to load products:", error);

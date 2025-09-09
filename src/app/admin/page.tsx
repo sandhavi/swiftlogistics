@@ -7,6 +7,7 @@ import DashboardStats from './components/Dashboard/DashboardStats';
 import StockManagement from './components/Stock/StockManagement';
 import DriverManagement from './components/Drivers/DriverManagement';
 import ClientManagement from './components/Clients/ClientManagement';
+import AdminRegisterManagement from './components/AdminRegister/AdminRegisterManagement';
 import { getCurrentUserAndRole } from '@/app/lib/auth';
 import { useRouter } from 'next/navigation';
 
@@ -54,6 +55,8 @@ export default function AdminDashboard() {
                 return <DriverManagement />;
             case 'clients':
                 return <ClientManagement />;
+            case 'admin-register':
+                return <AdminRegisterManagement />;
             default:
                 return <div>Select a tab from the sidebar</div>;
         }
