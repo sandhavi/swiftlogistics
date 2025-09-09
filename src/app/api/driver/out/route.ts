@@ -25,14 +25,14 @@ export async function POST(req: Request) {
         // Update in Firestore
         const orderRef = doc(db, 'orders', order.id);
         const sanitizedPackages = order.packages.map(p => {
-            const base: any = {
+            const base: Record<string, unknown> = {
                 id: p.id,
                 description: p.description,
                 address: p.address ?? '',
                 status: p.status,
             };
             if (p.proof && Object.keys(p.proof).length > 0) {
-                const sp: any = {};
+                const sp: Record<string, unknown> = {};
                 if (p.proof.signatureDataUrl) sp.signatureDataUrl = p.proof.signatureDataUrl;
                 if (p.proof.photoUrl) sp.photoUrl = p.proof.photoUrl;
                 if (typeof p.proof.reason === 'string') sp.reason = p.proof.reason;
