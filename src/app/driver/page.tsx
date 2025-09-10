@@ -42,6 +42,11 @@ export default function DriverDashboard() {
     const [driverName, setDriverName] = useState<string | null>(null);
     const [driverId, setDriverId] = useState<string>('');
 
+    // Modal state for failure reason
+    const [showFailureModal, setShowFailureModal] = useState(false);
+    const [failurePackageId, setFailurePackageId] = useState<string>('');
+    const [failureReason, setFailureReason] = useState<string>('');
+
     const [showAssignmentModal, setShowAssignmentModal] = useState(false);
     const [pendingAssignment, setPendingAssignment] = useState<any>(null);
 
@@ -146,14 +151,25 @@ export default function DriverDashboard() {
         }
     }
 
-    async function markFailed(packageId: string) {
+    function openFailureModal(packageId: string) {
+        setFailurePackageId(packageId);
+        setFailureReason('');
+        setShowFailureModal(true);
+    }
+
+    async function submitFailure() {
+        if (!failureReason.trim()) {
+            return; // Don't submit without a reason
+        }
+
         try {
-            const reason = prompt('Enter failure reason (e.g., recipient not available)') || 'Unknown';
             await fetch('/api/driver/fail', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-                body: JSON.stringify({ packageId, reason })
+                body: JSON.stringify({ packageId: failurePackageId, reason: failureReason })
             });
+            setShowFailureModal(false);
+            setFailureReason('');
             // Auto-refresh after failure action
             setTimeout(() => {
                 triggerRefresh();
@@ -187,6 +203,73 @@ export default function DriverDashboard() {
 
     return (
         <div className="min-h-screen bg-slate-50 font-poppins">
+            {/* Failure Reason Modal */}
+            {showFailureModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/80">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all">
+                        <div className="px-6 py-5 border-b border-slate-100">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex items-center justify-center w-10 h-10 bg-red-100 rounded-xl">
+                                        <XCircle className="w-6 h-6 text-red-600" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-slate-900">Mark Delivery as Failed</h3>
+                                </div>
+                                <button
+                                type='button'
+                                title='Close'
+                                    onClick={() => setShowFailureModal(false)}
+                                    className="text-slate-400 hover:text-slate-600 transition-colors"
+                                >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-6">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Please provide a reason for the delivery failure:
+                            </label>
+                            <textarea
+                                value={failureReason}
+                                onChange={(e) => setFailureReason(e.target.value)}
+                                placeholder="e.g., Recipient not available, Incorrect address, Package refused..."
+                                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none transition-all duration-200"
+                                rows={4}
+                                autoFocus
+                            />
+                            {!failureReason.trim() && (
+                                <p className="mt-2 text-sm text-red-600">* Reason is required</p>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
+                            <div className="flex items-center justify-end space-x-3">
+                                <button
+                                    onClick={() => setShowFailureModal(false)}
+                                    className="px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all duration-200 font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={submitFailure}
+                                    disabled={!failureReason.trim()}
+                                    className={`px-6 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2 ${failureReason.trim()
+                                            ? 'bg-red-600 text-white hover:bg-red-700'
+                                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        }`}
+                                >
+                                    <XCircle className="w-4 h-4" />
+                                    <span>Mark as Failed</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modern Header */}
             <header className="bg-white border-b border-slate-200/60 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -417,7 +500,7 @@ export default function DriverDashboard() {
                                                         route={{ id: o.routeId!, driverId: driverId || 'unknown', status: 'ASSIGNED' }}
                                                         order={{ id: o.id, packages: o.packages }}
                                                         onDeliver={(pkgId) => markDelivered(pkgId)}
-                                                        onFail={(pkgId) => markFailed(pkgId)}
+                                                        onFail={(pkgId) => openFailureModal(pkgId)}
                                                         onOut={(pkgId) => markOutForDelivery(pkgId)}
                                                     />
                                                 </div>

@@ -58,7 +58,7 @@ export default function ClientDashboard() {
         }
         if (stockRes.ok) {
           const s = await stockRes.json();
-          setStock((s.stock || []).map((i: any) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit })));
+          setStock((s.stock || []).map((i: { id: string; name: string; quantity: number; unit: string }) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit })));
         }
       } catch (e) {
         console.error('Failed to load dropdowns', e);
@@ -195,7 +195,7 @@ export default function ClientDashboard() {
     setNewOrder(prev => ({
       ...prev,
       packages: prev.packages.map((pkg, i) =>
-        i === index ? { ...pkg, [field]: value as any } : pkg
+        i === index ? { ...pkg, [field]: value } : pkg
       )
     }));
   };

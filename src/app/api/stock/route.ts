@@ -6,7 +6,7 @@ export async function GET() {
     try {
         const qSnap = await getDocs(collection(db, 'stock'));
         const stock = qSnap.docs.map(d => {
-            const data = d.data() as any;
+            const data = d.data() as Record<string, unknown>;
             let updatedAt: string | undefined;
             if (data.updatedAt instanceof Timestamp) updatedAt = data.updatedAt.toDate().toISOString();
             else if (typeof data.updatedAt === 'string') updatedAt = data.updatedAt;

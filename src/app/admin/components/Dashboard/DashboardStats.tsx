@@ -62,7 +62,7 @@ export default function DashboardStats() {
                 stockItems: stockSnap.data().count
             });
             setLastUpdated(new Date().toLocaleTimeString());
-        } catch (e: any) {
+        } catch (e) {
             console.error('Failed to fetch dashboard stats', e);
             setError('Failed to load stats.');
         } finally {

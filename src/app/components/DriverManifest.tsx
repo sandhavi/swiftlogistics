@@ -120,12 +120,17 @@ export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDelive
                                     <div className="flex flex-col space-y-2 ml-4">
                                         <button
                                             onClick={() => onOut(pkg.id)}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                                            disabled={pkg.status === 'IN_TRANSIT'}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+                                                pkg.status === 'IN_TRANSIT' 
+                                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
                                         >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                                             </svg>
-                                            <span>Out for delivery</span>
+                                            <span>{pkg.status === 'IN_TRANSIT' ? 'In Transit' : 'Out for delivery'}</span>
                                         </button>
                                         <button
                                             onClick={() => onDeliver(pkg.id)}
