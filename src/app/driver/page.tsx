@@ -23,6 +23,9 @@ import {
     History,
     List
 } from 'lucide-react';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { db } from '@/app/lib/firebase';
+import { RouteMap } from '../components/RouteMap';
 
 type RouteView = Pick<Route, 'id' | 'driverId' | 'status'> & { waypoints: string[]; packageIds: string[] };
 type OrderView = Pick<Order, 'id' | 'routeId'> & { createdAt?: number; packages: Pick<Package, 'id' | 'description' | 'status' | 'address'>[] };
@@ -38,6 +41,9 @@ export default function DriverDashboard() {
 
     const [driverName, setDriverName] = useState<string | null>(null);
     const [driverId, setDriverId] = useState<string>('');
+
+    const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+    const [pendingAssignment, setPendingAssignment] = useState<any>(null);
 
     async function loadOrders() {
         try {
@@ -422,7 +428,21 @@ export default function DriverDashboard() {
 
                                 {activeTab === 'route' && (
                                     <div className="space-y-6">
-                                        <div className="text-sm text-slate-500">Route view is not available for multi-order list.</div>
+                                        <RouteMap
+                                            packages={orders.flatMap(o => o.packages).filter(pkg => pkg.address !== undefined) as Array<{ id: string; address: string; status: string }>}
+                                            driverId={driverId}
+                                            onLocationUpdate={async (location) => {
+                                                // Update driver location in Firestore
+                                                try {
+                                                    await updateDoc(doc(db, 'drivers', driverId), {
+                                                        currentLocation: location,
+                                                        lastLocationUpdate: serverTimestamp()
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to update location:', error);
+                                                }
+                                            }}
+                                        />
                                     </div>
                                 )}
 
@@ -471,6 +491,42 @@ export default function DriverDashboard() {
                     </>
                 )}
             </div>
+
+            {showAssignmentModal && pendingAssignment && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+                        <h3 className="text-lg font-bold mb-4">New Route Assignment</h3>
+                        <p className="mb-4">You have been assigned {pendingAssignment.orders.length} new orders. Accept this route?</p>
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={async () => {
+                                    await updateDoc(doc(db, 'assignments', `${pendingAssignment.id}`), {
+                                        status: 'REJECTED',
+                                        respondedAt: serverTimestamp()
+                                    });
+                                    setShowAssignmentModal(false);
+                                }}
+                                className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg"
+                            >
+                                Reject
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    await updateDoc(doc(db, 'assignments', `${pendingAssignment.id}`), {
+                                        status: 'ACCEPTED',
+                                        respondedAt: serverTimestamp()
+                                    });
+                                    setShowAssignmentModal(false);
+                                    loadOrders(); // Refresh orders list
+                                }}
+                                className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg"
+                            >
+                                Accept
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
