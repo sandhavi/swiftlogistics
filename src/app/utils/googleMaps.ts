@@ -1,3 +1,11 @@
+// app/utils/googleMaps.ts
+
+declare global {
+  interface Window {
+    google: typeof google;
+  }
+}
+
 let isLoadingAPI = false;
 let apiLoadPromise: Promise<typeof google> | null = null;
 
@@ -56,4 +64,50 @@ export const loadGoogleMapsAPI = (): Promise<typeof google> => {
   });
 
   return apiLoadPromise;
+};
+
+/**
+ * Geocodes an address to coordinates
+ * @param address The address to geocode
+ * @returns Promise with coordinates
+ */
+export const geocodeAddress = async (address: string): Promise<google.maps.LatLng | null> => {
+  try {
+    const google = await loadGoogleMapsAPI();
+    const geocoder = new google.maps.Geocoder();
+    
+    return new Promise((resolve, reject) => {
+      geocoder.geocode({ address }, (results, status) => {
+        if (status === google.maps.GeocoderStatus.OK && results && results[0]) {
+          resolve(results[0].geometry.location);
+        } else {
+          console.warn(`Geocoding failed for address "${address}":`, status);
+          resolve(null);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error geocoding address:', error);
+    return null;
+  }
+};
+
+/**
+ * Calculates distance between two coordinates
+ * @param origin Starting point
+ * @param destination End point
+ * @returns Distance in meters
+ */
+export const calculateDistance = (
+  origin: google.maps.LatLngLiteral,
+  destination: google.maps.LatLngLiteral
+): number => {
+  if (!window.google || !window.google.maps) {
+    return 0;
+  }
+
+  const originLatLng = new google.maps.LatLng(origin.lat, origin.lng);
+  const destinationLatLng = new google.maps.LatLng(destination.lat, destination.lng);
+  
+  return google.maps.geometry.spherical.computeDistanceBetween(originLatLng, destinationLatLng);
 };

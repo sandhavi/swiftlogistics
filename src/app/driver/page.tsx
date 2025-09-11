@@ -50,6 +50,12 @@ export default function DriverDashboard() {
     const [showAssignmentModal, setShowAssignmentModal] = useState(false);
     const [pendingAssignment, setPendingAssignment] = useState<any>(null);
 
+    // Updated state variables for delivery workflow
+    const [isHeadingToWarehouse, setIsHeadingToWarehouse] = useState(false);
+    const [selectedPackage, setSelectedPackage] = useState<{id: string, address: string} | null>(null);
+    const [deliveryPhase, setDeliveryPhase] = useState<'none' | 'heading_to_warehouse' | 'picked_up' | 'delivering'>('none');
+    const WAREHOUSE_LOCATION = "Colombo, Sri Lanka";
+
     async function loadOrders() {
         try {
             const url = driverId ? `/api/orders?driverId=${encodeURIComponent(driverId)}` : '/api/orders';
@@ -127,6 +133,12 @@ export default function DriverDashboard() {
                     photoUrl: undefined
                 })
             });
+            
+            // Reset delivery workflow
+            setDeliveryPhase('none');
+            setIsHeadingToWarehouse(false);
+            setSelectedPackage(null);
+            
             // Auto-refresh after delivery action
             setTimeout(() => {
                 triggerRefresh();
@@ -138,16 +150,55 @@ export default function DriverDashboard() {
 
     async function markOutForDelivery(packageId: string) {
         try {
-            await fetch('/api/driver/out', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-                body: JSON.stringify({ packageId })
+            // Find the package details
+            const pkg = orders.flatMap(o => o.packages).find(p => p.id === packageId);
+            if (!pkg) return;
+
+            // Set states for navigation to warehouse first
+            setSelectedPackage({
+                id: packageId,
+                address: pkg.address || 'No address provided'
             });
-            setTimeout(() => {
-                triggerRefresh();
-            }, 300);
+            setIsHeadingToWarehouse(true);
+            setDeliveryPhase('heading_to_warehouse');
+            
+            // Switch to route tab to show navigation
+            setActiveTab('route');
+
+            // DON'T mark as out for delivery yet - this will happen after warehouse pickup
+            // The handlePackagePickup function will handle the API call to mark as IN_TRANSIT
+            
+            console.log(`Starting delivery process for package ${packageId} - heading to warehouse first`);
+            
         } catch (error) {
-            console.error('Failed to mark out for delivery:', error);
+            console.error('Failed to start delivery process:', error);
+        }
+    }
+
+    // Handle package pickup at warehouse - updated version
+    function handlePackagePickup() {
+        if (selectedPackage && deliveryPhase === 'heading_to_warehouse') {
+            // Package has been picked up from warehouse, now heading to delivery location
+            setIsHeadingToWarehouse(false);
+            setDeliveryPhase('delivering');
+            
+            // Update the package status to IN_TRANSIT in the backend
+            if (selectedPackage.id) {
+                fetch('/api/driver/out', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+                    body: JSON.stringify({ packageId: selectedPackage.id })
+                }).then(() => {
+                    // Refresh orders to get updated package status
+                    setTimeout(() => {
+                        triggerRefresh();
+                    }, 300);
+                }).catch(error => {
+                    console.error('Failed to update package status:', error);
+                });
+            }
+            
+            console.log(`Package ${selectedPackage.id} picked up from warehouse, now calculating delivery route`);
         }
     }
 
@@ -168,8 +219,15 @@ export default function DriverDashboard() {
                 headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
                 body: JSON.stringify({ packageId: failurePackageId, reason: failureReason })
             });
+            
             setShowFailureModal(false);
             setFailureReason('');
+            
+            // Reset delivery workflow
+            setDeliveryPhase('none');
+            setIsHeadingToWarehouse(false);
+            setSelectedPackage(null);
+            
             // Auto-refresh after failure action
             setTimeout(() => {
                 triggerRefresh();
@@ -198,8 +256,6 @@ export default function DriverDashboard() {
             </div>
         );
     }
-
-    // Route status class helper not used in the multi-order view
 
     return (
         <div className="min-h-screen bg-slate-50 font-poppins">
@@ -486,6 +542,59 @@ export default function DriverDashboard() {
                             <div className="p-6">
                                 {activeTab === 'manifest' && (
                                     <div className="space-y-6">
+                                        {/* Delivery Status Card */}
+                                        {deliveryPhase !== 'none' && selectedPackage && (
+                                            <div className={`p-4 rounded-xl border-2 mb-6 ${
+                                                deliveryPhase === 'heading_to_warehouse' 
+                                                    ? 'border-blue-200 bg-blue-50' 
+                                                    : deliveryPhase === 'delivering' 
+                                                    ? 'border-green-200 bg-green-50'
+                                                    : 'border-amber-200 bg-amber-50'
+                                            }`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                                            deliveryPhase === 'heading_to_warehouse' 
+                                                                ? 'bg-blue-100' 
+                                                                : deliveryPhase === 'delivering' 
+                                                                ? 'bg-green-100' 
+                                                                : 'bg-amber-100'
+                                                        }`}>
+                                                            <Truck className={`w-5 h-5 ${
+                                                                deliveryPhase === 'heading_to_warehouse' 
+                                                                    ? 'text-blue-600' 
+                                                                    : deliveryPhase === 'delivering' 
+                                                                    ? 'text-green-600' 
+                                                                    : 'text-amber-600'
+                                                            }`} />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-slate-900">
+                                                                Package #{selectedPackage.id.slice(-6)} - {
+                                                                    deliveryPhase === 'heading_to_warehouse' 
+                                                                        ? 'Heading to Warehouse'
+                                                                        : deliveryPhase === 'delivering'
+                                                                        ? 'Out for Delivery'
+                                                                        : 'In Transit'
+                                                                }
+                                                            </h4>
+                                                            <p className="text-sm text-slate-600">
+                                                                {deliveryPhase === 'heading_to_warehouse' 
+                                                                    ? 'Navigate to warehouse for package pickup'
+                                                                    : `Delivering to: ${selectedPackage.address}`}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setActiveTab('route')}
+                                                        className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+                                                    >
+                                                        View Route
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {orders.map((o) => (
                                             <div key={o.id} className="border rounded-2xl overflow-hidden">
                                                 <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
@@ -514,8 +623,10 @@ export default function DriverDashboard() {
                                         <RouteMap
                                             packages={orders.flatMap(o => o.packages).filter(pkg => pkg.address !== undefined) as Array<{ id: string; address: string; status: string }>}
                                             driverId={driverId}
+                                            warehouseLocation={WAREHOUSE_LOCATION}
+                                            isHeadingToWarehouse={isHeadingToWarehouse}
+                                            selectedPackage={selectedPackage}
                                             onLocationUpdate={async (location) => {
-                                                // Update driver location in Firestore
                                                 try {
                                                     await updateDoc(doc(db, 'drivers', driverId), {
                                                         currentLocation: location,
@@ -525,6 +636,7 @@ export default function DriverDashboard() {
                                                     console.error('Failed to update location:', error);
                                                 }
                                             }}
+                                            onPackagePickedUp={handlePackagePickup}
                                         />
                                     </div>
                                 )}
