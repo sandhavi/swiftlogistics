@@ -50,92 +50,152 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   } | null>(null);
 
   // Only show packages that are IN_TRANSIT (picked up by driver)
-  const inTransitPackages = packages.filter(pkg => pkg.status === 'IN_TRANSIT');
+  const inTransitPackages = packages.filter(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT');
+
+  // Determine active package robustly (case-insensitive). Prefer IN_TRANSIT packages,
+  // fallback to selectedPackage prop if provided.
+  const activePackage =
+    packages.find(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT')
+    || selectedPackage
+    || null;
+
+  // For debugging
+  // (You can remove this log later)
+  console.log("Effective selected package (activePackage):", activePackage);
 
   const calculateOptimizedRoute = useCallback(async () => {
-  if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
-    return;
-  }
-
-  try {
-    const directionsService = new google.maps.DirectionsService();
-    const geocoder = new google.maps.Geocoder();
-
-    // Clear old renderers
-    if (directionsRendererRef.current) {
-      directionsRendererRef.current.setMap(null);
-    }
-    if (warehouseToDeliveryRendererRef.current) {
-      warehouseToDeliveryRendererRef.current.setMap(null);
+    if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
+      return;
     }
 
-    // Initialize new renderers
-    directionsRendererRef.current = new google.maps.DirectionsRenderer({
-      map: mapInstanceRef.current,
-      suppressMarkers: true,
-      polylineOptions: {
-        strokeColor: "#065f46", // dark green
-        strokeWeight: 5,
-        strokeOpacity: 0.9,
-      },
-    });
-
-    warehouseToDeliveryRendererRef.current = new google.maps.DirectionsRenderer({
-      map: mapInstanceRef.current,
-      suppressMarkers: true,
-      polylineOptions: {
-        strokeColor: "#34d399", // light green
-        strokeWeight: 4,
-        strokeOpacity: 0.6,
-      },
-    });
-
-    // 1️⃣ Driver → Warehouse (always drawn)
-    const toWarehouse: google.maps.DirectionsRequest = {
-      origin: currentLocation,
-      destination: WAREHOUSE_LOCATION,
-      travelMode: google.maps.TravelMode.DRIVING,
-    };
-
-    directionsService.route(toWarehouse, (result, status) => {
-      if (status === google.maps.DirectionsStatus.OK && result) {
-        directionsRendererRef.current?.setDirections(result);
-
-        // Fit to driver → warehouse
-        if (result.routes[0].bounds) {
-          mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
-        }
-      } else {
-        console.error("Driver → Warehouse route failed", status);
+    // If no package in transit → show driver location only (per your requirement)
+    if (!activePackage) {
+      // Clear any existing route renderers to avoid stale polylines
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+        directionsRendererRef.current = null;
       }
-    });
+      if (warehouseToDeliveryRendererRef.current) {
+        warehouseToDeliveryRendererRef.current.setMap(null);
+        warehouseToDeliveryRendererRef.current = null;
+      }
 
-    // 2️⃣ Warehouse → Delivery (only if a package is selected)
-    if (selectedPackage) {
-      const deliveryLocation = await geocoder.geocode({ address: selectedPackage.address });
-      if (deliveryLocation.results && deliveryLocation.results[0]) {
-        const toDelivery: google.maps.DirectionsRequest = {
-          origin: WAREHOUSE_LOCATION,
-          destination: deliveryLocation.results[0].geometry.location,
-          travelMode: google.maps.TravelMode.DRIVING,
-        };
+      // Ensure driver marker is at current location and map centers on it
+      driverMarkerRef.current.setPosition(currentLocation);
+      mapInstanceRef.current.setCenter(currentLocation);
+      return;
+    }
 
-        directionsService.route(toDelivery, (result, status) => {
-          if (status === google.maps.DirectionsStatus.OK && result) {
-            warehouseToDeliveryRendererRef.current?.setDirections(result);
-          } else {
-            console.error("Warehouse → Delivery route failed", status);
+    try {
+      const directionsService = new google.maps.DirectionsService();
+      const geocoder = new google.maps.Geocoder();
+
+      // Clear old renderers (we will recreate them)
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+        directionsRendererRef.current = null;
+      }
+      if (warehouseToDeliveryRendererRef.current) {
+        warehouseToDeliveryRendererRef.current.setMap(null);
+        warehouseToDeliveryRendererRef.current = null;
+      }
+
+      // Initialize new renderers
+      directionsRendererRef.current = new google.maps.DirectionsRenderer({
+        map: mapInstanceRef.current,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: "#065f46", // dark green
+          strokeWeight: 5,
+          strokeOpacity: 0.9,
+        },
+      });
+
+      warehouseToDeliveryRendererRef.current = new google.maps.DirectionsRenderer({
+        map: mapInstanceRef.current,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: "#34d399", // light green
+          strokeWeight: 4,
+          strokeOpacity: 0.6,
+        },
+      });
+
+      // 1️⃣ Driver → Warehouse
+      const toWarehouse: google.maps.DirectionsRequest = {
+        origin: currentLocation,
+        destination: WAREHOUSE_LOCATION,
+        travelMode: google.maps.TravelMode.DRIVING,
+      };
+
+      directionsService.route(toWarehouse, (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          directionsRendererRef.current?.setDirections(result);
+
+          // Fit to driver → warehouse (keeps both lines visible once we set the second one)
+          if (result.routes && result.routes[0] && result.routes[0].bounds) {
+            mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
           }
+        } else {
+          console.error("Driver → Warehouse route failed", status);
+        }
+      });
+
+      // 2️⃣ Warehouse → Delivery (activePackage is guaranteed to exist here)
+      if (activePackage) {
+        // Geocode the delivery address
+        const deliveryLocation = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
+          geocoder.geocode({ address: activePackage.address }, (results, status) => {
+            if (status === google.maps.GeocoderStatus.OK && results && results[0]) {
+              resolve(results);
+            } else {
+              reject(status);
+            }
+          });
+        }).catch((gErr) => {
+          console.error("Geocode failed for delivery address:", gErr);
+          return null;
         });
+
+        if (deliveryLocation && deliveryLocation[0]) {
+          const toDelivery: google.maps.DirectionsRequest = {
+            origin: WAREHOUSE_LOCATION,
+            destination: deliveryLocation[0].geometry.location,
+            travelMode: google.maps.TravelMode.DRIVING,
+          };
+
+          directionsService.route(toDelivery, (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK && result) {
+              warehouseToDeliveryRendererRef.current?.setDirections(result);
+
+              // Optionally expand bounds to include both routes:
+              // combine bounds if both exist so both polylines remain visible
+              try {
+                const bounds = new google.maps.LatLngBounds();
+                const driverRoute = directionsRendererRef.current?.getDirections();
+                const deliveryRoute = warehouseToDeliveryRendererRef.current?.getDirections();
+
+                if (driverRoute && driverRoute.routes && driverRoute.routes[0]) {
+                  bounds.union(driverRoute.routes[0].bounds);
+                }
+                if (deliveryRoute && deliveryRoute.routes && deliveryRoute.routes[0]) {
+                  bounds.union(deliveryRoute.routes[0].bounds);
+                }
+                mapInstanceRef.current?.fitBounds(bounds);
+              } catch (e) {
+                // ignore bounding errors, it's only for nicer framing
+              }
+            } else {
+              console.error("Warehouse → Delivery route failed", status);
+            }
+          });
+        }
       }
+    } catch (error) {
+      console.error("Route calculation error:", error);
+      setError("Failed to calculate optimized route");
     }
-  } catch (error) {
-    console.error("Route calculation error:", error);
-    setError("Failed to calculate optimized route");
-  }
-}, [currentLocation, apiLoaded, selectedPackage]);
-
-
+  }, [currentLocation, apiLoaded, activePackage]);
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
@@ -274,7 +334,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         map,
         suppressMarkers: true, // We'll use custom markers
         polylineOptions: {
-          strokeColor: "#059669", // Solid green color
+          strokeColor: "#059669", // Solid green color (initial)
           strokeWeight: 4,
           strokeOpacity: 0.8 // Static opacity, no animation
         }
@@ -481,13 +541,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
           <h4 className="font-semibold text-slate-900 mb-3">Delivery Sequence</h4>
           <div className="space-y-2 max-h-40 overflow-y-auto">
             {routeInfo.routeSteps.map((step, index) => (
-              <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${
-                index === 0 ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50'
-              }`}>
+              <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${index === 0 ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50'}`}>
                 <div className="flex items-center space-x-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    index === 0 ? 'bg-blue-600 text-white' : 'bg-slate-400 text-white'
-                  }`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index === 0 ? 'bg-blue-600 text-white' : 'bg-slate-400 text-white'}`}>
                     {index + 1}
                   </div>
                   <div>
