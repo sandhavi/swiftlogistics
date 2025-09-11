@@ -30,6 +30,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   const packageMarkersRef = useRef<google.maps.Marker[]>([]);
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const warehouseToDeliveryRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,257 +52,90 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   // Only show packages that are IN_TRANSIT (picked up by driver)
   const inTransitPackages = packages.filter(pkg => pkg.status === 'IN_TRANSIT');
 
-  // Calculate optimized route with two phases: warehouse pickup then delivery
   const calculateOptimizedRoute = useCallback(async () => {
-    if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
-      return;
+  if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
+    return;
+  }
+
+  try {
+    const directionsService = new google.maps.DirectionsService();
+    const geocoder = new google.maps.Geocoder();
+
+    // Clear old renderers
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+    }
+    if (warehouseToDeliveryRendererRef.current) {
+      warehouseToDeliveryRendererRef.current.setMap(null);
     }
 
-    try {
-      const directionsService = new google.maps.DirectionsService();
-      const geocoder = new google.maps.Geocoder();
+    // Initialize new renderers
+    directionsRendererRef.current = new google.maps.DirectionsRenderer({
+      map: mapInstanceRef.current,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: "#065f46", // dark green
+        strokeWeight: 5,
+        strokeOpacity: 0.9,
+      },
+    });
 
-      // Clear previous route
-      directionsRendererRef.current?.setDirections({ routes: [] } as any);
+    warehouseToDeliveryRendererRef.current = new google.maps.DirectionsRenderer({
+      map: mapInstanceRef.current,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: "#34d399", // light green
+        strokeWeight: 4,
+        strokeOpacity: 0.6,
+      },
+    });
 
-      // Clear existing package markers
-      packageMarkersRef.current.forEach(marker => marker.setMap(null));
-      packageMarkersRef.current = [];
+    // 1️⃣ Driver → Warehouse (always drawn)
+    const toWarehouse: google.maps.DirectionsRequest = {
+      origin: currentLocation,
+      destination: WAREHOUSE_LOCATION,
+      travelMode: google.maps.TravelMode.DRIVING,
+    };
 
-      // PHASE 1: If heading to warehouse, show route to warehouse only
-      if (isHeadingToWarehouse && selectedPackage) {
-        const warehouseRequest: google.maps.DirectionsRequest = {
-          origin: currentLocation,
-          destination: WAREHOUSE_LOCATION,
+    directionsService.route(toWarehouse, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result) {
+        directionsRendererRef.current?.setDirections(result);
+
+        // Fit to driver → warehouse
+        if (result.routes[0].bounds) {
+          mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
+        }
+      } else {
+        console.error("Driver → Warehouse route failed", status);
+      }
+    });
+
+    // 2️⃣ Warehouse → Delivery (only if a package is selected)
+    if (selectedPackage) {
+      const deliveryLocation = await geocoder.geocode({ address: selectedPackage.address });
+      if (deliveryLocation.results && deliveryLocation.results[0]) {
+        const toDelivery: google.maps.DirectionsRequest = {
+          origin: WAREHOUSE_LOCATION,
+          destination: deliveryLocation.results[0].geometry.location,
           travelMode: google.maps.TravelMode.DRIVING,
-          avoidHighways: false,
-          avoidTolls: false
         };
 
-        directionsService.route(warehouseRequest, (result, status) => {
+        directionsService.route(toDelivery, (result, status) => {
           if (status === google.maps.DirectionsStatus.OK && result) {
-            directionsRendererRef.current?.setDirections(result);
-            
-            const route = result.routes[0];
-            if (route && route.legs && route.legs.length > 0) {
-              const leg = route.legs[0];
-              setRouteInfo({
-                totalDistance: leg.distance?.text || '0 km',
-                totalDuration: leg.duration?.text || '0 min',
-                nextDestination: 'Warehouse (Package Pickup)',
-                routeSteps: [{
-                  destination: 'Central Warehouse - Package Pickup',
-                  distance: leg.distance?.text || 'Unknown',
-                  duration: leg.duration?.text || 'Unknown',
-                  stepIndex: 0
-                }]
-              });
-            }
-
-            // Show warehouse marker
-            if (warehouseMarkerRef.current) {
-              warehouseMarkerRef.current.setVisible(true);
-            }
-
-            // Fit map to show route
-            if (route.bounds) {
-              mapInstanceRef.current?.fitBounds(route.bounds);
-            }
+            warehouseToDeliveryRendererRef.current?.setDirections(result);
           } else {
-            console.error('Warehouse route failed:', { status, error: result });
-            setError(`Failed to calculate route to warehouse: ${status}`);
+            console.error("Warehouse → Delivery route failed", status);
           }
         });
-        return;
       }
-
-      // PHASE 2: After pickup, show optimized delivery route
-      if (!isHeadingToWarehouse && inTransitPackages.length > 0) {
-        // Geocode all IN_TRANSIT package addresses
-        const geocodePromises = inTransitPackages.map(async (pkg) => {
-          try {
-            const result = await geocoder.geocode({ address: pkg.address });
-            if (result.results && result.results[0]) {
-              return {
-                packageId: pkg.id,
-                address: pkg.address,
-                location: result.results[0].geometry.location,
-                status: pkg.status
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error(`Failed to geocode ${pkg.address}:`, error);
-            return null;
-          }
-        });
-
-        const geocodedPackages = (await Promise.all(geocodePromises)).filter(Boolean);
-
-        if (geocodedPackages.length === 0) {
-          setError('Could not geocode any delivery addresses');
-          return;
-        }
-
-        // Create multi-stop route: Warehouse → All delivery locations (optimized)
-        const deliveryWaypoints: google.maps.DirectionsWaypoint[] = geocodedPackages.map(pkg => ({
-          location: pkg!.location,
-          stopover: true
-        }));
-
-        // Start from warehouse, visit all delivery locations in optimized order
-        const deliveryRequest: google.maps.DirectionsRequest = {
-          origin: WAREHOUSE_LOCATION, // Start from warehouse
-          destination: geocodedPackages[geocodedPackages.length - 1]!.location, // End at last delivery
-          waypoints: geocodedPackages.length > 1 ? deliveryWaypoints.slice(0, -1) : [], // All but last as waypoints
-          travelMode: google.maps.TravelMode.DRIVING,
-          optimizeWaypoints: true,
-          avoidHighways: false,
-          avoidTolls: false
-        };
-
-        directionsService.route(deliveryRequest, (result, status) => {
-          if (status === google.maps.DirectionsStatus.OK && result) {
-            directionsRendererRef.current?.setDirections(result);
-            
-            const route = result.routes[0];
-            if (route && route.legs && route.legs.length > 0) {
-              // Calculate total distance and duration
-              let totalDistance = 0;
-              let totalDuration = 0;
-              const routeSteps: Array<{
-                destination: string;
-                distance: string;
-                duration: string;
-                stepIndex: number;
-              }> = [];
-
-              // Add warehouse as first step
-              routeSteps.push({
-                destination: 'Central Warehouse (Starting Point)',
-                distance: '0 km',
-                duration: '0 min',
-                stepIndex: 0
-              });
-
-              route.legs.forEach((leg, index) => {
-                if (leg.distance && leg.duration) {
-                  totalDistance += leg.distance.value;
-                  totalDuration += leg.duration.value;
-                  
-                  // Determine destination based on waypoint optimization
-                  const waypointIndex = route.waypoint_order ? route.waypoint_order[index] : index;
-                  const pkg = geocodedPackages[waypointIndex < geocodedPackages.length ? waypointIndex : index];
-                  
-                  let destination = 'Delivery Stop';
-                  if (pkg) {
-                    destination = `Package #${pkg.packageId.slice(-6)} - ${pkg.address}`;
-                  }
-
-                  routeSteps.push({
-                    destination,
-                    distance: leg.distance.text || 'Unknown',
-                    duration: leg.duration.text || 'Unknown',
-                    stepIndex: index + 1
-                  });
-                }
-              });
-
-              setRouteInfo({
-                totalDistance: `${(totalDistance / 1000).toFixed(1)} km`,
-                totalDuration: `${Math.ceil(totalDuration / 60)} min`,
-                nextDestination: routeSteps.length > 1 ? routeSteps[1].destination : 'No destinations',
-                routeSteps: routeSteps
-              });
-
-              // Create markers for delivery locations with optimized order
-              const orderToUse = route.waypoint_order || geocodedPackages.map((_, i) => i);
-              
-              // Add warehouse marker as stop 1
-              if (warehouseMarkerRef.current) {
-                warehouseMarkerRef.current.setVisible(true);
-              }
-
-              // Add delivery location markers starting from stop 2
-              orderToUse.forEach((originalIndex, optimizedIndex) => {
-                const pkg = geocodedPackages[originalIndex];
-                if (pkg && mapInstanceRef.current) {
-                  const stopNumber = optimizedIndex + 2; // Start from 2 (warehouse is 1)
-                  const marker = new google.maps.Marker({
-                    map: mapInstanceRef.current,
-                    position: pkg.location,
-                    title: `Stop ${stopNumber}: Package #${pkg.packageId.slice(-6)}\n${pkg.address}`,
-                    icon: {
-                      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">
-                          <circle cx="14" cy="14" r="12" fill="#059669" stroke="#ffffff" stroke-width="3"/>
-                          <text x="14" y="18" text-anchor="middle" fill="#ffffff" font-size="11" font-weight="bold">${stopNumber}</text>
-                        </svg>
-                      `),
-                      scaledSize: new google.maps.Size(28, 28),
-                      anchor: new google.maps.Point(14, 14)
-                    }
-                  });
-
-                  // Add info window
-                  const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                      <div class="p-3">
-                        <h4 class="font-semibold text-sm mb-1">Stop ${stopNumber}: Package #${pkg.packageId.slice(-6)}</h4>
-                        <p class="text-xs text-gray-600 mb-1">${pkg.address}</p>
-                        <div class="flex items-center justify-between">
-                          <p class="text-xs font-medium" style="color: #059669">
-                            IN_TRANSIT
-                          </p>
-                          <p class="text-xs text-gray-500">
-                            Order: ${stopNumber}
-                          </p>
-                        </div>
-                      </div>
-                    `
-                  });
-
-                  marker.addListener('click', () => {
-                    infoWindow.open(mapInstanceRef.current, marker);
-                  });
-
-                  packageMarkersRef.current.push(marker);
-                }
-              });
-
-              // Fit map to show entire route
-              if (route.bounds) {
-                mapInstanceRef.current?.fitBounds(route.bounds);
-              }
-            }
-          } else {
-            console.error('Delivery route failed:', { status, error: result });
-            setError(`Failed to calculate delivery route: ${status}`);
-          }
-        });
-        return;
-      }
-
-      // Default state: no packages or no active delivery
-      if (inTransitPackages.length === 0) {
-        setRouteInfo({
-          totalDistance: '0 km',
-          totalDuration: '0 min',
-          nextDestination: isHeadingToWarehouse ? 'Warehouse (Package Pickup)' : 'No packages in transit',
-          routeSteps: []
-        });
-        
-        // Show only warehouse marker when heading there
-        if (warehouseMarkerRef.current && isHeadingToWarehouse) {
-          warehouseMarkerRef.current.setVisible(true);
-        }
-      }
-
-    } catch (error) {
-      console.error('Route calculation error:', error);
-      setError('Failed to calculate optimized route');
     }
-  }, [currentLocation, isHeadingToWarehouse, inTransitPackages, apiLoaded, selectedPackage]);
+  } catch (error) {
+    console.error("Route calculation error:", error);
+    setError("Failed to calculate optimized route");
+  }
+}, [currentLocation, apiLoaded, selectedPackage]);
+
+
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
@@ -545,6 +379,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
         directionsRendererRef.current = null;
+      }
+      if (warehouseToDeliveryRendererRef.current) {
+        warehouseToDeliveryRendererRef.current.setMap(null);
+        warehouseToDeliveryRendererRef.current = null;
       }
     };
   }, []);
