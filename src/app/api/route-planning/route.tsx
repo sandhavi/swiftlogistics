@@ -1,16 +1,25 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/app/lib/firebase';
-import { collection, query, where, getDocs, setDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { store } from '@/app/lib/store';
+import { collection, query, where, getDocs, setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { bus } from '@/app/lib/bus';
 
 const BATCH_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+type Order = {
+  id: string;
+  [key: string]: unknown;
+};
+
+type Driver = {
+  id: string;
+  [key: string]: unknown;
+};
 
 type RouteAssignmentEvent = {
   type: 'ROUTE_ASSIGNED';
   routeId: string;
   driverId: string;
-  orders: any[]; // Add orders to the allowed properties
+  orders: Order[];
 };
 
 export async function POST() {
@@ -71,9 +80,9 @@ export async function POST() {
   }
 }
 
-function groupOrdersByProximity(orders: any[]) {
+function groupOrdersByProximity(orders: Order[]) {
   // Simple grouping by creation time batches
-  const groups: Record<string, any[]> = {};
+  const groups: Record<string, Order[]> = {};
   const now = Date.now();
   
   orders.forEach(order => {
@@ -86,7 +95,7 @@ function groupOrdersByProximity(orders: any[]) {
   return groups;
 }
 
-function findOptimalDriver(orders: any[], drivers: any[]) {
+function findOptimalDriver(orders: Order[], drivers: Driver[]) {
   // Simple round-robin assignment for now
   return drivers[Math.floor(Math.random() * drivers.length)];
 }

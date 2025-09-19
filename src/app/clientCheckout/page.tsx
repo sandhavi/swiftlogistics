@@ -8,7 +8,7 @@ const DELIVERY_COST = 200; // fixed delivery cost
 const PRIORITY_COST = 150; // priority shipping extra cost
 
 export default function CheckoutPage() {
-  const [cart, setCart] = useState<any[]>([]);
+  const [cart, setCart] = useState<Array<{ id: string; name: string; quantity: number; price: string | number }>>([]);
   const [address, setAddress] = useState({
     line1: "",
     city: "",
@@ -31,7 +31,7 @@ export default function CheckoutPage() {
   }, []);
 
   const subtotal = cart.reduce(
-    (sum, item) => sum + (parseFloat(item.price) || 0) * item.quantity,
+    (sum, item) => sum + (typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0) * item.quantity,
     0
   );
   const total = subtotal + DELIVERY_COST + (priority ? PRIORITY_COST : 0);
@@ -145,7 +145,7 @@ export default function CheckoutPage() {
                     <span>
                       {item.name} x {item.quantity}
                     </span>
-                    <span>Rs.{(parseFloat(item.price) || 0) * item.quantity}</span>
+                    <span>Rs.{(typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0) * item.quantity}</span>
                   </li>
                 ))}
               </ul>
@@ -202,7 +202,7 @@ export default function CheckoutPage() {
                   <span>
                     {item.name} x {item.quantity}
                   </span>
-                  <span>Rs.{(parseFloat(item.price) || 0) * item.quantity}</span>
+                  <span>Rs.{(typeof item.price === 'number' ? item.price : parseFloat(item.price) || 0) * item.quantity}</span>
                 </div>
               ))}
               <div className="border-t mt-2 pt-2 font-bold flex justify-between">

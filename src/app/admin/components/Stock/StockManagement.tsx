@@ -372,8 +372,8 @@ export default function StockManagement() {
                                         });
                                         setIsEditModalOpen(false);
                                         setEditItem(null);
-                                    } catch (e: any) {
-                                        setEditError(e.message || 'Failed to update item.');
+                                    } catch (e: unknown) {
+                                        setEditError(e instanceof Error ? e.message : 'Failed to update item.');
                                     } finally {
                                         setIsSaving(false);
                                     }
@@ -415,8 +415,8 @@ export default function StockManagement() {
                                         await deleteDoc(doc(db, 'stock', editItem.id));
                                         setIsDeleteModalOpen(false);
                                         setEditItem(null);
-                                    } catch (e: any) {
-                                        setDeleteError(e.message || 'Failed to delete item.');
+                                    } catch (e: unknown) {
+                                        setDeleteError(e instanceof Error ? e.message : 'Failed to delete item.');
                                     } finally {
                                         setIsSaving(false);
                                     }

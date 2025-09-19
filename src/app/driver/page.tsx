@@ -48,13 +48,13 @@ export default function DriverDashboard() {
     const [failureReason, setFailureReason] = useState<string>('');
 
     const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-    const [pendingAssignment, setPendingAssignment] = useState<any>(null);
+    const [pendingAssignment, setPendingAssignment] = useState<{ id: string; routeId: string; orders: unknown[] } | null>(null);
 
     // Updated state variables for delivery workflow
     const [isHeadingToWarehouse, setIsHeadingToWarehouse] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState<{id: string, address: string} | null>(null);
     const [deliveryPhase, setDeliveryPhase] = useState<'none' | 'heading_to_warehouse' | 'picked_up' | 'delivering'>('none');
-    const WAREHOUSE_LOCATION = "Colombo, Sri Lanka";
+    const WAREHOUSE_LOCATION = "University of Colombo, Sri Lanka";
 
     async function loadOrders() {
         try {
@@ -628,7 +628,7 @@ export default function DriverDashboard() {
                                             selectedPackage={selectedPackage}
                                             onLocationUpdate={async (location) => {
                                                 try {
-                                                    await updateDoc(doc(db, 'drivers', driverId), {
+                                                    await updateDoc(doc(db, 'users', driverId), {
                                                         currentLocation: location,
                                                         lastLocationUpdate: serverTimestamp()
                                                     });
@@ -670,9 +670,10 @@ export default function DriverDashboard() {
                                                             {pkg.status}
                                                         </div>
                                                     </div>
-                                                ))}
+                                                )
+                                            )}
                                             {allPkgs.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length === 0 && (
-                                                <div className="text-center py-12 text-slate-500">
+                                                <div className="text-center py-12 text-slate-500">     
                                                     <PackageIcon className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                                                     <p className="text-lg font-medium mb-2">No deliveries completed yet</p>
                                                     <p className="text-sm">Completed deliveries will appear here</p>
