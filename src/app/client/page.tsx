@@ -429,7 +429,7 @@ export default function ClientDashboard() {
                         id="driverId"
                         value={newOrder.driverId}
                         onChange={(e) => setNewOrder(prev => ({ ...prev, driverId: e.target.value }))}
-                        className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                        className="w-full pl-10 pr-4 py-3 border border-slate-200 text-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                         aria-label="Driver"
                       >
                         <option value="">Select a driver</option>
@@ -452,7 +452,7 @@ export default function ClientDashboard() {
                       type="text"
                       value={newOrder.address}
                       onChange={(e) => setNewOrder(prev => ({ ...prev, address: e.target.value }))}
-                      className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
+                      className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent"
                       placeholder="Enter complete delivery address"
                       aria-label="Delivery Address"
                     />
@@ -488,7 +488,7 @@ export default function ClientDashboard() {
                                 updateNewOrderPackage(index, 'stockItemId', id);
                                 if (item?.name) updateNewOrderPackage(index, 'description', item.name);
                               }}
-                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
+                              className="w-full px-3 py-2.5 border text-gray-700 border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
                               aria-label="Select stock item"
                             >
                               <option value="">Choose item...</option>
@@ -507,7 +507,7 @@ export default function ClientDashboard() {
                               placeholder="Package description"
                               value={pkg.description}
                               onChange={(e) => updateNewOrderPackage(index, 'description', e.target.value)}
-                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
+                              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
                               aria-label="Package description"
                             />
                           </div>
@@ -525,7 +525,7 @@ export default function ClientDashboard() {
                                   const val = Math.max(1, Math.min(parseInt(e.target.value || '1', 10), max));
                                   updateNewOrderPackage(index, 'quantity', val);
                                 }}
-                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
+                                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg focus:outline-none text-gray-700 focus:ring-2 focus:ring-slate-900 focus:border-transparent text-sm"
                                 aria-label="Quantity"
                               />
                             </div>

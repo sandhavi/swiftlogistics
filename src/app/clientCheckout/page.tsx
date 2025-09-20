@@ -91,11 +91,11 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex justify-center items-start py-12 px-4">
       <div className="bg-white p-8 rounded shadow-md max-w-3xl w-full">
-        <h1 className="text-3xl font-bold mb-6">Checkout</h1>
+        <h1 className="text-3xl text-gray-800 font-bold mb-6">Checkout</h1>
 
         {/* Delivery Address Section */}
         <section className="mb-6">
-          <h2 className="text-xl font-semibold mb-3">Delivery Address</h2>
+          <h2 className="text-xl text-gray-800 font-semibold mb-3">Delivery Address</h2>
           <input
             type="text"
             placeholder="Address Line 1"
