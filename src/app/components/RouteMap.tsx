@@ -8,21 +8,52 @@ interface RouteMapProps {
   warehouseLocation: string;
   isHeadingToWarehouse: boolean;
   selectedPackage: { id: string; address: string } | null;
+  selectedPackages: string[];
   onLocationUpdate: (location: google.maps.LatLngLiteral) => Promise<void>;
   onPackagePickedUp?: () => void;
 }
 
-const WAREHOUSE_LOCATION = { lat: 6.9271, lng: 79.8612 }; // Colombo
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+const WAREHOUSE_LOCATION = { lat: 6.904, lng: 79.859 }; // Colombo
+// const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-export const RouteMap: React.FC<RouteMapProps> = ({ 
+export const RouteMap: React.FC<RouteMapProps> = function RouteMap({ 
   packages, 
-  driverId, 
   isHeadingToWarehouse, 
   selectedPackage, 
-  onLocationUpdate,
-  onPackagePickedUp
-}) => {
+  selectedPackages,
+  onLocationUpdate
+}) {
+  // Cleanup effect: Remove all stop number markers if there are no packages IN_TRANSIT
+  useEffect(() => {
+    const inTransitPackages = packages.filter(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT');
+    if (inTransitPackages.length === 0) {
+      // Remove all package markers (stop number tags)
+      if (packageMarkersRef.current && packageMarkersRef.current.length > 0) {
+        packageMarkersRef.current.forEach(marker => {
+          if (marker) marker.setMap(null);
+        });
+        packageMarkersRef.current = [];
+      }
+      // Also remove warehouse marker if needed
+      if (warehouseMarkerRef.current) {
+        warehouseMarkerRef.current.setMap(null);
+      }
+      // Clear directions
+      if (directionsRendererRef.current) {
+        directionsRendererRef.current.setMap(null);
+      }
+      if (warehouseToDeliveryRendererRef.current) {
+        warehouseToDeliveryRendererRef.current.setMap(null);
+      }
+    }
+  }, [packages]);
+  // DEBUG: Print all props and state on every render
+  console.log('[ROUTEMAP RENDER]');
+  console.log('Packages prop:', packages);
+  console.log('SelectedPackages prop:', selectedPackages);
+  console.log('Is heading to warehouse:', isHeadingToWarehouse);
+  console.log('InTransit packages:', packages.filter(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT'));
+  console.log('Active package:', packages.find(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT') || selectedPackage || null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const driverMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -37,17 +68,18 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   const [isMapReady, setIsMapReady] = useState(false);
   const [apiLoaded, setApiLoaded] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<google.maps.LatLngLiteral>(WAREHOUSE_LOCATION);
-  const [routeInfo, setRouteInfo] = useState<{
-    totalDistance: string;
-    totalDuration: string;
-    nextDestination: string;
-    routeSteps: Array<{
-      destination: string;
-      distance: string;
-      duration: string;
-      stepIndex: number;
-    }>;
-  } | null>(null);
+  // const [routeInfo, setRouteInfo] = useState<RouteInfoType | null>(null);
+  // type RouteInfoType = {
+  //   totalDistance: string;
+  //   totalDuration: string;
+  //   nextDestination: string;
+  //   routeSteps: Array<{
+  //     destination: string;
+  //     distance: string;
+  //     duration: string;
+  //     stepIndex: number;
+  //   }>;
+  // };
 
   // Only show packages that are IN_TRANSIT (picked up by driver)
   const inTransitPackages = packages.filter(pkg => (pkg.status || '').toString().toUpperCase() === 'IN_TRANSIT');
@@ -64,138 +96,246 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   console.log("Effective selected package (activePackage):", activePackage);
 
   const calculateOptimizedRoute = useCallback(async () => {
+  console.log('--- RouteMap Debug ---');
+  console.log('Current location:', currentLocation);
+  console.log('Packages prop:', packages);
+  console.log('SelectedPackages prop:', selectedPackages);
+  console.log('Is heading to warehouse:', isHeadingToWarehouse);
+  console.log('InTransit packages:', inTransitPackages);
     if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
       return;
     }
 
-    // If no package in transit → show driver location only (per your requirement)
-    if (!activePackage) {
-      // Clear any existing route renderers to avoid stale polylines
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-        directionsRendererRef.current = null;
-      }
-      if (warehouseToDeliveryRendererRef.current) {
-        warehouseToDeliveryRendererRef.current.setMap(null);
-        warehouseToDeliveryRendererRef.current = null;
-      }
-
-      // Ensure driver marker is at current location and map centers on it
-      driverMarkerRef.current.setPosition(currentLocation);
-      mapInstanceRef.current.setCenter(currentLocation);
-      return;
+    // Always clear old package markers before recalculating route
+    if (packageMarkersRef.current && packageMarkersRef.current.length > 0) {
+      packageMarkersRef.current.forEach(marker => {
+        if (marker) marker.setMap(null);
+      });
+      packageMarkersRef.current = [];
     }
 
-    try {
-      const directionsService = new google.maps.DirectionsService();
-      const geocoder = new google.maps.Geocoder();
+    // Debug: log all package statuses
+    console.log("All packages:", packages.map(p => ({id: p.id, status: p.status})));
+    console.log("InTransit packages:", inTransitPackages);
 
-      // Clear old renderers (we will recreate them)
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-        directionsRendererRef.current = null;
+    // Always use the provided polyline styles for both route segments
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
+    }
+    if (warehouseToDeliveryRendererRef.current) {
+      warehouseToDeliveryRendererRef.current.setMap(null);
+      warehouseToDeliveryRendererRef.current = null;
+    }
+
+    directionsRendererRef.current = new google.maps.DirectionsRenderer({
+      map: mapInstanceRef.current,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: "#065f46", // dark green
+        strokeWeight: 5,
+        strokeOpacity: 0.9,
+      },
+    });
+
+    warehouseToDeliveryRendererRef.current = new google.maps.DirectionsRenderer({
+      map: mapInstanceRef.current,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: "#34d399", // light green
+        strokeWeight: 4,
+        strokeOpacity: 0.6,
+      },
+    });
+
+    // 1️⃣ Driver → Warehouse
+    const directionsService = new google.maps.DirectionsService();
+    const geocoder = new google.maps.Geocoder();
+
+    const toWarehouse = {
+      origin: currentLocation,
+      destination: WAREHOUSE_LOCATION,
+      travelMode: google.maps.TravelMode.DRIVING,
+    };
+
+    directionsService.route(toWarehouse, (result, status) => {
+      if (status === google.maps.DirectionsStatus.OK && result) {
+        directionsRendererRef.current?.setDirections(result);
+        if (result.routes && result.routes[0] && result.routes[0].bounds) {
+          mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
+        }
+      } else {
+        console.error("Driver → Warehouse route failed", status);
       }
-      if (warehouseToDeliveryRendererRef.current) {
-        warehouseToDeliveryRendererRef.current.setMap(null);
-        warehouseToDeliveryRendererRef.current = null;
+    });
+    // Always number all selected packages, including failed geocodes
+    const deliveryPackages = selectedPackages
+      .map(id => packages.find(pkg => pkg.id === id))
+      .filter((pkg): pkg is { id: string; address: string; status: string } => !!pkg);
+    if (deliveryPackages.length > 0) {
+      // Remove old package markers
+      packageMarkersRef.current.forEach(marker => marker.setMap(null));
+      packageMarkersRef.current = [];
+
+      // Geocode all addresses, but keep track of failures
+      type GeocodeResultType = { success: boolean; result: google.maps.GeocoderResult | null; pkg: typeof deliveryPackages[number] };
+      const geocodeResults = await Promise.all(deliveryPackages.map(async pkg => {
+        return new Promise<GeocodeResultType>(resolve => {
+          if (!pkg) {
+            resolve({ success: false, result: null, pkg });
+            return;
+          }
+          geocoder.geocode({ address: pkg.address }, (results, status) => {
+            if (status === google.maps.GeocoderStatus.OK && results && results[0]) {
+              resolve({ success: true, result: results[0], pkg });
+            } else {
+              resolve({ success: false, result: null, pkg });
+            }
+          });
+        });
+      })) as GeocodeResultType[];
+
+      // Only use successful geocodes for waypoints
+      const validLocations = geocodeResults.filter(r => r.success).map(r => r.result!);
+      const waypoints = validLocations.map(loc => ({ location: loc.geometry.location, stopover: true }));
+
+      // If a stop was just delivered, start route from its geocoded location
+      let routeOrigin = WAREHOUSE_LOCATION;
+      // Find the most recently delivered package (if any)
+      const deliveredPkgs = packages.filter(pkg => pkg.status?.toUpperCase() === 'DELIVERED');
+      if (deliveredPkgs.length > 0) {
+        // Geocode the address of the last delivered package
+        const lastDelivered = deliveredPkgs[deliveredPkgs.length - 1];
+        await new Promise<void>((resolve) => {
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ address: lastDelivered.address }, (results, status) => {
+            if (status === google.maps.GeocoderStatus.OK && results && results[0]) {
+              const loc = results[0].geometry.location;
+              routeOrigin = { lat: loc.lat(), lng: loc.lng() };
+            }
+            resolve();
+          });
+        });
+      } else {
+        routeOrigin = WAREHOUSE_LOCATION;
       }
-
-      // Initialize new renderers
-      directionsRendererRef.current = new google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current,
-        suppressMarkers: true,
-        polylineOptions: {
-          strokeColor: "#065f46", // dark green
-          strokeWeight: 5,
-          strokeOpacity: 0.9,
-        },
-      });
-
-      warehouseToDeliveryRendererRef.current = new google.maps.DirectionsRenderer({
-        map: mapInstanceRef.current,
-        suppressMarkers: true,
-        polylineOptions: {
-          strokeColor: "#34d399", // light green
-          strokeWeight: 4,
-          strokeOpacity: 0.6,
-        },
-      });
-
-      // 1️⃣ Driver → Warehouse
-      const toWarehouse: google.maps.DirectionsRequest = {
-        origin: currentLocation,
-        destination: WAREHOUSE_LOCATION,
+      const toDeliveries: google.maps.DirectionsRequest = {
+        origin: routeOrigin,
+        destination: waypoints.length > 0 ? waypoints[waypoints.length - 1].location : routeOrigin,
+        waypoints: waypoints.length > 1 ? waypoints.slice(0, -1) : [],
         travelMode: google.maps.TravelMode.DRIVING,
+        optimizeWaypoints: true,
       };
-
-      directionsService.route(toWarehouse, (result, status) => {
+      directionsService.route(toDeliveries, (result, status) => {
+        let markerNum = 1;
         if (status === google.maps.DirectionsStatus.OK && result) {
           directionsRendererRef.current?.setDirections(result);
-
-          // Fit to driver → warehouse (keeps both lines visible once we set the second one)
-          if (result.routes && result.routes[0] && result.routes[0].bounds) {
-            mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
+          try {
+            // Use waypoint_order to reorder valid markers
+            const waypointOrder = result.routes[0].waypoint_order || [];
+            const markerOrder = waypointOrder.length === 0 ? [0] : waypointOrder;
+            // Map valid geocodeResults indices to optimized order
+            const validIndices = geocodeResults.map((r, idx) => r.success ? idx : null).filter(idx => idx !== null) as number[];
+            // Place numbered markers for all selected packages in selection order
+            for (let i = 0; i < geocodeResults.length; i++) {
+              const r = geocodeResults[i];
+              if (r.success && r.pkg && markerOrder.length > 0) {
+                // Find optimized order index for this valid location
+                const orderIdx = markerOrder.indexOf(validIndices.indexOf(i));
+                const loc = r.result!.geometry.location;
+                const marker = new google.maps.Marker({
+                  map: mapInstanceRef.current!,
+                  position: loc,
+                  title: `Stop ${markerNum}: ${r.pkg.address}`,
+                  icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                        <circle cx="16" cy="16" r="14" fill="#2563eb" stroke="#ffffff" stroke-width="3"/>
+                        <text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="bold">${markerNum}</text>
+                      </svg>
+                    `),
+                    scaledSize: new google.maps.Size(32, 32),
+                    anchor: new google.maps.Point(16, 16)
+                  }
+                });
+                packageMarkersRef.current.push(marker);
+              } else if (!r.success && r.pkg) {
+                // Failed geocode: show numbered warning marker at warehouse
+                const marker = new google.maps.Marker({
+                  map: mapInstanceRef.current!,
+                  position: WAREHOUSE_LOCATION,
+                  title: `Stop ${markerNum} (Address not found): ${r.pkg.address}`,
+                  icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                        <circle cx="16" cy="16" r="14" fill="#f59e42" stroke="#ffffff" stroke-width="3"/>
+                        <text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="bold">${markerNum}!</text>
+                      </svg>
+                    `),
+                    scaledSize: new google.maps.Size(32, 32),
+                    anchor: new google.maps.Point(16, 16)
+                  }
+                });
+                packageMarkersRef.current.push(marker);
+              }
+              markerNum++;
+            }
+            // Fit bounds to route
+            const bounds = new google.maps.LatLngBounds();
+            if (result.routes && result.routes[0]) {
+              bounds.union(result.routes[0].bounds);
+            }
+            mapInstanceRef.current?.fitBounds(bounds);
+          } catch {
+            // ignore bounding errors
           }
         } else {
-          console.error("Driver → Warehouse route failed", status);
+          // Even if route fails, show all markers for selected packages
+          for (let i = 0; i < geocodeResults.length; i++) {
+            const r = geocodeResults[i];
+            if (r.pkg) {
+              if (r.success) {
+                const loc = r.result!.geometry.location;
+                const marker = new google.maps.Marker({
+                  map: mapInstanceRef.current!,
+                  position: loc,
+                  title: `Stop ${i + 1}: ${r.pkg.address}`,
+                  icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                        <circle cx="16" cy="16" r="14" fill="#2563eb" stroke="#ffffff" stroke-width="3"/>
+                        <text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="bold">${i + 1}</text>
+                      </svg>
+                    `),
+                    scaledSize: new google.maps.Size(32, 32),
+                    anchor: new google.maps.Point(16, 16)
+                  }
+                });
+                packageMarkersRef.current.push(marker);
+              } else {
+                const marker = new google.maps.Marker({
+                  map: mapInstanceRef.current!,
+                  position: WAREHOUSE_LOCATION,
+                  title: `Stop ${i + 1} (Address not found): ${r.pkg.address}`,
+                  icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                      <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+                        <circle cx="16" cy="16" r="14" fill="#f59e42" stroke="#ffffff" stroke-width="3"/>
+                        <text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="bold">${i + 1}!</text>
+                      </svg>
+                    `),
+                    scaledSize: new google.maps.Size(32, 32),
+                    anchor: new google.maps.Point(16, 16)
+                  }
+                });
+                packageMarkersRef.current.push(marker);
+              }
+            }
+          }
         }
       });
-
-      // 2️⃣ Warehouse → Delivery (activePackage is guaranteed to exist here)
-      if (activePackage) {
-        // Geocode the delivery address
-        const deliveryLocation = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
-          geocoder.geocode({ address: activePackage.address }, (results, status) => {
-            if (status === google.maps.GeocoderStatus.OK && results && results[0]) {
-              resolve(results);
-            } else {
-              reject(status);
-            }
-          });
-        }).catch((gErr) => {
-          console.error("Geocode failed for delivery address:", gErr);
-          return null;
-        });
-
-        if (deliveryLocation && deliveryLocation[0]) {
-          const toDelivery: google.maps.DirectionsRequest = {
-            origin: WAREHOUSE_LOCATION,
-            destination: deliveryLocation[0].geometry.location,
-            travelMode: google.maps.TravelMode.DRIVING,
-          };
-
-          directionsService.route(toDelivery, (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK && result) {
-              warehouseToDeliveryRendererRef.current?.setDirections(result);
-
-              // Optionally expand bounds to include both routes:
-              // combine bounds if both exist so both polylines remain visible
-              try {
-                const bounds = new google.maps.LatLngBounds();
-                const driverRoute = directionsRendererRef.current?.getDirections();
-                const deliveryRoute = warehouseToDeliveryRendererRef.current?.getDirections();
-
-                if (driverRoute && driverRoute.routes && driverRoute.routes[0]) {
-                  bounds.union(driverRoute.routes[0].bounds);
-                }
-                if (deliveryRoute && deliveryRoute.routes && deliveryRoute.routes[0]) {
-                  bounds.union(deliveryRoute.routes[0].bounds);
-                }
-                mapInstanceRef.current?.fitBounds(bounds);
-              } catch (e) {
-                // ignore bounding errors, it's only for nicer framing
-              }
-            } else {
-              console.error("Warehouse → Delivery route failed", status);
-            }
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Route calculation error:", error);
-      setError("Failed to calculate optimized route");
     }
-  }, [currentLocation, apiLoaded, activePackage]);
+  }, [currentLocation, apiLoaded, selectedPackages, packages, inTransitPackages, isHeadingToWarehouse]);
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
@@ -401,188 +541,107 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   // Update warehouse marker visibility when heading state changes
   useEffect(() => {
-    if (warehouseMarkerRef.current) {
-      warehouseMarkerRef.current.setVisible(isHeadingToWarehouse);
+    if (!mapInstanceRef.current || !driverMarkerRef.current || !apiLoaded) {
+      return;
     }
-  }, [isHeadingToWarehouse]);
-
-  // Calculate route when state changes
-  useEffect(() => {
-    if (isMapReady && apiLoaded) {
-      const timer = setTimeout(() => {
-        calculateOptimizedRoute();
-      }, 500); // Small delay to ensure map is fully ready
-
-      return () => clearTimeout(timer);
-    }
-  }, [isMapReady, apiLoaded, inTransitPackages.length, currentLocation, isHeadingToWarehouse, calculateOptimizedRoute]);
-
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      if (watchIdRef.current) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-      packageMarkersRef.current.forEach(marker => marker.setMap(null));
-      packageMarkersRef.current = [];
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current = null;
-      }
-      if (driverMarkerRef.current) {
-        driverMarkerRef.current.setMap(null);
-        driverMarkerRef.current = null;
-      }
-      if (warehouseMarkerRef.current) {
-        warehouseMarkerRef.current.setMap(null);
-        warehouseMarkerRef.current = null;
-      }
+    if (isHeadingToWarehouse) {
+      // Show warehouse route only before pickup
       if (directionsRendererRef.current) {
         directionsRendererRef.current.setMap(null);
         directionsRendererRef.current = null;
       }
-      if (warehouseToDeliveryRendererRef.current) {
-        warehouseToDeliveryRendererRef.current.setMap(null);
-        warehouseToDeliveryRendererRef.current = null;
+      directionsRendererRef.current = new google.maps.DirectionsRenderer({
+        map: mapInstanceRef.current,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: "#065f46", // dark green
+          strokeWeight: 5,
+          strokeOpacity: 0.9,
+        },
+      });
+      const directionsService = new google.maps.DirectionsService();
+      const toWarehouse = {
+        origin: currentLocation,
+        destination: WAREHOUSE_LOCATION,
+        travelMode: google.maps.TravelMode.DRIVING,
+      };
+      directionsService.route(toWarehouse, (result, status) => {
+        if (status === google.maps.DirectionsStatus.OK && result) {
+          directionsRendererRef.current?.setDirections(result);
+          if (result.routes && result.routes[0] && result.routes[0].bounds) {
+            mapInstanceRef.current?.fitBounds(result.routes[0].bounds);
+          }
+        } else {
+          console.error("Driver → Warehouse route failed", status);
+        }
+      });
+    } else {
+      // After pickup, always show delivery route
+      calculateOptimizedRoute();
+
+      // If all selected packages are delivered, clear routes and markers
+      if (
+        selectedPackages.length > 0 &&
+        selectedPackages.every(id => {
+          const pkg = packages.find(p => p.id === id);
+          return pkg && pkg.status && pkg.status.toUpperCase() === 'DELIVERED';
+        })
+      ) {
+        // Remove all package markers (stop number tags)
+        if (packageMarkersRef.current && packageMarkersRef.current.length > 0) {
+          packageMarkersRef.current.forEach(marker => {
+            if (marker) marker.setMap(null);
+          });
+          packageMarkersRef.current = [];
+        }
+        // Also remove warehouse marker if needed
+        if (warehouseMarkerRef.current) {
+          warehouseMarkerRef.current.setMap(null);
+        }
+        // Clear directions
+        if (directionsRendererRef.current) {
+          directionsRendererRef.current.setMap(null);
+        }
+        if (warehouseToDeliveryRendererRef.current) {
+          warehouseToDeliveryRendererRef.current.setMap(null);
+        }
       }
-    };
-  }, []);
-
-  if (error) {
-    return (
-      <div className="h-[500px] flex items-center justify-center bg-red-50 rounded-xl border border-red-200">
-        <div className="flex flex-col items-center text-center p-6">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <span className="text-red-600 text-xl">⚠</span>
-          </div>
-          <h3 className="text-lg font-semibold text-red-900 mb-2">Map Loading Failed</h3>
-          <p className="text-red-700 text-sm mb-4 max-w-md">{error}</p>
-          {error.includes('API key') && (
-            <p className="text-red-600 text-xs mb-4">Please check your NEXT_PUBLIC_GOOGLE_MAPS_API_KEY environment variable</p>
-          )}
-          <button 
-            onClick={() => {
-              setError(null);
-              setIsMapReady(false);
-              setIsLoading(true);
-              setApiLoaded(false);
-              window.location.reload();
-            }} 
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="h-[500px] flex items-center justify-center bg-slate-50 rounded-xl">
-        <div className="flex flex-col items-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-900 border-t-transparent mb-4"></div>
-          <p className="text-slate-600 font-medium">Loading optimized route map...</p>
-          <p className="text-slate-500 text-sm mt-1">Calculating best delivery sequence...</p>
-        </div>
-      </div>
-    );
-  }
+    }
+  }, [currentLocation, apiLoaded, selectedPackages, packages, isHeadingToWarehouse, calculateOptimizedRoute]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Optimized Delivery Route</h3>
-        <div className="flex items-center space-x-2 text-sm text-slate-500">
-          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-          <span>GPS Active</span>
-        </div>
-      </div>
-
-      {/* Route Summary Card */}
-      {routeInfo && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-semibold text-slate-900">Route Summary</h4>
-            {isHeadingToWarehouse && onPackagePickedUp && (
-              <button
-                onClick={onPackagePickedUp}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm transition-colors"
-              >
-                Mark Package Picked Up
-              </button>
-            )}
-          </div>
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900">{routeInfo.totalDistance}</div>
-              <div className="text-sm text-slate-600">Total Distance</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900">{routeInfo.totalDuration}</div>
-              <div className="text-sm text-slate-600">Total Time</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-slate-900">{inTransitPackages.length}</div>
-              <div className="text-sm text-slate-600">In Transit</div>
-            </div>
-          </div>
-          <div className="border-t border-blue-200 pt-3">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600 font-medium">Next Stop:</span>
-              <span className="font-semibold text-slate-900 text-right max-w-xs truncate">{routeInfo.nextDestination}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
+    <div>
       {/* Route Steps */}
-      {routeInfo && routeInfo.routeSteps.length > 0 && (
+      {/* {routeInfo && routeInfo.routeSteps.length > 0 && ( */}
+      {/*
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <h4 className="font-semibold text-slate-900 mb-3">Delivery Sequence</h4>
           <div className="space-y-2 max-h-40 overflow-y-auto">
-            {routeInfo.routeSteps.map((step, index) => (
-              <div key={index} className={`flex items-center justify-between p-2 rounded-lg ${index === 0 ? 'bg-blue-50 border border-blue-200' : 'bg-slate-50'}`}>
-                <div className="flex items-center space-x-3">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index === 0 ? 'bg-blue-600 text-white' : 'bg-slate-400 text-white'}`}>
-                    {index + 1}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-slate-900 truncate max-w-xs">{step.destination}</div>
-                    <div className="text-xs text-slate-500">{step.distance} • {step.duration}</div>
-                  </div>
-                </div>
-                {index === 0 && (
-                  <div className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded">
-                    Next
-                  </div>
-                )}
-              </div>
-            ))}
           </div>
         </div>
-      )}
-      
-      <div 
-        ref={mapRef} 
-        className="h-[500px] rounded-xl border border-slate-200 shadow-sm bg-slate-100"
-        style={{ minHeight: '500px' }}
-      />
-      
-      <div className="flex items-center justify-between text-sm text-slate-500 bg-slate-50 p-3 rounded-lg">
-        <span>
-          {inTransitPackages.length > 0 
-            ? `Showing route for ${inTransitPackages.length} IN_TRANSIT package${inTransitPackages.length > 1 ? 's' : ''}`
-            : isHeadingToWarehouse 
-            ? 'Navigate to warehouse for package pickup'
-            : 'No packages in transit - routes will appear after pickup'}
-        </span>
-        <button 
-          onClick={calculateOptimizedRoute}
-          className="text-slate-700 hover:text-slate-900 font-medium disabled:opacity-50"
-          disabled={!isMapReady}
-        >
-          Recalculate Route
-        </button>
+      */}
+      <div>
+        <div 
+          ref={mapRef} 
+          className="h-[500px] rounded-xl border border-slate-200 shadow-sm bg-slate-100"
+          style={{ minHeight: '500px' }}
+        />
+        <div className="flex items-center justify-between text-sm text-slate-500 bg-slate-50 p-3 rounded-lg">
+          <span>
+            {inTransitPackages.length > 0 
+              ? `Showing route for ${inTransitPackages.length} IN_TRANSIT package${inTransitPackages.length > 1 ? 's' : ''}`
+              : isHeadingToWarehouse 
+              ? 'Navigate to warehouse for package pickup'
+              : 'No packages in transit - routes will appear after pickup'}
+          </span>
+          <button 
+            onClick={calculateOptimizedRoute}
+            className="text-slate-700 hover:text-slate-900 font-medium disabled:opacity-50"
+            disabled={!isMapReady}
+          >
+            Recalculate Route
+          </button>
+        </div>
       </div>
     </div>
   );

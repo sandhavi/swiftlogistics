@@ -31,6 +31,7 @@ type RouteView = Pick<Route, 'id' | 'driverId' | 'status'> & { waypoints: string
 type OrderView = Pick<Order, 'id' | 'routeId'> & { createdAt?: number; packages: Pick<Package, 'id' | 'description' | 'status' | 'address'>[] };
 
 export default function DriverDashboard() {
+    // Removed routeRefreshKey workaround
     const router = useRouter();
     const [authChecked, setAuthChecked] = useState(false);
     const [route, setRoute] = useState<RouteView | null>(null);
@@ -54,7 +55,25 @@ export default function DriverDashboard() {
     const [isHeadingToWarehouse, setIsHeadingToWarehouse] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState<{id: string, address: string} | null>(null);
     const [deliveryPhase, setDeliveryPhase] = useState<'none' | 'heading_to_warehouse' | 'picked_up' | 'delivering'>('none');
+    const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
     const WAREHOUSE_LOCATION = "University of Colombo, Sri Lanka";
+
+    // Multi-package selection handlers
+    const handleSelectPackage = (packageId: string, checked: boolean) => {
+        setSelectedPackages(prev => checked
+            ? [...prev, packageId]
+            : prev.filter(id => id !== packageId)
+        );
+    };
+
+    const handleStartDelivery = () => {
+        // Begin delivery workflow: show route to warehouse
+        setIsHeadingToWarehouse(true);
+        setDeliveryPhase('heading_to_warehouse');
+        setSelectedPackage(null); // Ensure no delivery address is set yet
+        setActiveTab('route');
+        console.log('Starting delivery for:', selectedPackages);
+    };
 
     async function loadOrders() {
         try {
@@ -70,6 +89,28 @@ export default function DriverDashboard() {
             assigned.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
             setOrders(assigned);
             setLastRefresh(new Date());
+
+            // Recalculate delivery phase after orders refresh
+            if (selectedPackages.length > 0) {
+                const selectedPkgs = assigned.flatMap(o => o.packages).filter(pkg => selectedPackages.includes(pkg.id));
+                const statuses = selectedPkgs.map(pkg => pkg.status);
+                if (selectedPkgs.length === 0) {
+                    setDeliveryPhase('none');
+                    setIsHeadingToWarehouse(false);
+                } else if (statuses.every(s => s === 'WAITING')) {
+                    setDeliveryPhase('heading_to_warehouse');
+                    setIsHeadingToWarehouse(true);
+                } else if (statuses.every(s => s === 'IN_TRANSIT')) {
+                    setDeliveryPhase('delivering');
+                    setIsHeadingToWarehouse(false);
+                } else if (statuses.every(s => s === 'DELIVERED' || s === 'FAILED')) {
+                    setDeliveryPhase('none');
+                    setIsHeadingToWarehouse(false);
+                }
+            } else {
+                setDeliveryPhase('none');
+                setIsHeadingToWarehouse(false);
+            }
 
             // No single selected route; we will list all orders below
             setRoute(null);
@@ -104,9 +145,11 @@ export default function DriverDashboard() {
             esRef.current = es;
             es.onmessage = (ev) => {
                 try {
-                    JSON.parse(ev.data);
-                    // Trigger refresh on any event
-                    triggerRefresh();
+                    const eventData = JSON.parse(ev.data);
+                    // Only trigger refresh if package statuses have changed
+                    if (eventData.type === 'package_status_update') {
+                        triggerRefresh();
+                    }
                 } catch (error) {
                     console.error('Failed to parse event:', error);
                 }
@@ -177,28 +220,31 @@ export default function DriverDashboard() {
 
     // Handle package pickup at warehouse - updated version
     function handlePackagePickup() {
-        if (selectedPackage && deliveryPhase === 'heading_to_warehouse') {
-            // Package has been picked up from warehouse, now heading to delivery location
+        if (deliveryPhase === 'heading_to_warehouse') {
+            // All selected packages have been picked up from warehouse, now heading to delivery locations
             setIsHeadingToWarehouse(false);
             setDeliveryPhase('delivering');
-            
-            // Update the package status to IN_TRANSIT in the backend
-            if (selectedPackage.id) {
+
+            // Update the status of all selected packages to IN_TRANSIT
+            Promise.all(selectedPackages.map(packageId =>
                 fetch('/api/driver/out', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-                    body: JSON.stringify({ packageId: selectedPackage.id })
-                }).then(() => {
-                    // Refresh orders to get updated package status
-                    setTimeout(() => {
-                        triggerRefresh();
-                    }, 300);
-                }).catch(error => {
-                    console.error('Failed to update package status:', error);
-                });
-            }
-            
-            console.log(`Package ${selectedPackage.id} picked up from warehouse, now calculating delivery route`);
+                    body: JSON.stringify({ packageId })
+                })
+            )).then(() => {
+                // Ensure state is set before refreshing orders
+                setTimeout(() => {
+                    setIsHeadingToWarehouse(false);
+                    setDeliveryPhase('delivering');
+                    setActiveTab('route'); // Ensure route tab is active
+                    triggerRefresh();
+                }, 100);
+            }).catch(error => {
+                console.error('Failed to update package status:', error);
+            });
+
+            console.log(`Packages ${selectedPackages.join(', ')} picked up from warehouse, now calculating delivery route`);
         }
     }
 
@@ -271,23 +317,26 @@ export default function DriverDashboard() {
                                     </div>
                                     <h3 className="text-lg font-semibold text-slate-900">Mark Delivery as Failed</h3>
                                 </div>
-                                <button
-                                type='button'
-                                title='Close'
-                                    onClick={() => setShowFailureModal(false)}
-                                    className="text-slate-400 hover:text-slate-600 transition-colors"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                </button>
                             </div>
-                        </div>
-
-                        <div className="p-6">
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Please provide a reason for the delivery failure:
-                            </label>
+                            <RouteMap
+                                packages={orders.flatMap(o => o.packages).filter(pkg => pkg.address !== undefined) as Array<{ id: string; address: string; status: string }>}
+                                driverId={driverId}
+                                warehouseLocation={WAREHOUSE_LOCATION}
+                                isHeadingToWarehouse={isHeadingToWarehouse}
+                                selectedPackage={selectedPackage}
+                                selectedPackages={selectedPackages}
+                                onLocationUpdate={async (location) => {
+                                    try {
+                                        await updateDoc(doc(db, 'users', driverId), {
+                                            currentLocation: location,
+                                            lastLocationUpdate: serverTimestamp()
+                                        });
+                                    } catch (error) {
+                                        console.error('Failed to update location:', error);
+                                    }
+                                }}
+                                onPackagePickedUp={handlePackagePickup}
+                            />
                             <textarea
                                 value={failureReason}
                                 onChange={(e) => setFailureReason(e.target.value)}
@@ -608,9 +657,11 @@ export default function DriverDashboard() {
                                                     <DriverManifest
                                                         route={{ id: o.routeId!, driverId: driverId || 'unknown', status: 'ASSIGNED' }}
                                                         order={{ id: o.id, packages: o.packages }}
-                                                        onDeliver={(pkgId) => markDelivered(pkgId)}
-                                                        onFail={(pkgId) => openFailureModal(pkgId)}
-                                                        onOut={(pkgId) => markOutForDelivery(pkgId)}
+                                                        onDeliver={markDelivered}
+                                                        onFail={openFailureModal}
+                                                        selected={selectedPackages}
+                                                        onSelect={handleSelectPackage}
+                                                        onStartDelivery={handleStartDelivery}
                                                     />
                                                 </div>
                                             </div>
@@ -620,12 +671,26 @@ export default function DriverDashboard() {
 
                                 {activeTab === 'route' && (
                                     <div className="space-y-6">
+                                        {isHeadingToWarehouse && (
+                                            <button
+                                                onClick={handlePackagePickup}
+                                                className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-semibold shadow hover:bg-green-800 transition-colors mb-4"
+                                            >
+                                                Picked Up
+                                            </button>
+                                        )}
                                         <RouteMap
-                                            packages={orders.flatMap(o => o.packages).filter(pkg => pkg.address !== undefined) as Array<{ id: string; address: string; status: string }>}
+                                            packages={orders
+                                                .flatMap(o => o.packages)
+                                                .filter(pkg =>
+                                                    selectedPackages.includes(pkg.id) &&
+                                                    pkg.address && typeof pkg.address === 'string' && pkg.address !== ''
+                                                ) as Array<{ id: string; address: string; status: string }>}
                                             driverId={driverId}
                                             warehouseLocation={WAREHOUSE_LOCATION}
                                             isHeadingToWarehouse={isHeadingToWarehouse}
                                             selectedPackage={selectedPackage}
+                                            selectedPackages={selectedPackages}
                                             onLocationUpdate={async (location) => {
                                                 try {
                                                     await updateDoc(doc(db, 'users', driverId), {
