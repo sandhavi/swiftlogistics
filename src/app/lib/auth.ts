@@ -7,7 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 export type UserRole = "admin" | "client" | "driver";
 
 // Allow configuring admin emails via env; fallback to known demo admin
-const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "aadmin@gmail.com")
+const ADMIN_EMAILS: string[] = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || "admin@gmail.com")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);

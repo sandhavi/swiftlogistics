@@ -23,11 +23,15 @@ import {
     History,
     List
 } from 'lucide-react';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { db } from '@/app/lib/firebase';
+import { RouteMap } from '../components/RouteMap';
 
 type RouteView = Pick<Route, 'id' | 'driverId' | 'status'> & { waypoints: string[]; packageIds: string[] };
 type OrderView = Pick<Order, 'id' | 'routeId'> & { createdAt?: number; packages: Pick<Package, 'id' | 'description' | 'status' | 'address'>[] };
 
 export default function DriverDashboard() {
+    // Removed routeRefreshKey workaround
     const router = useRouter();
     const [authChecked, setAuthChecked] = useState(false);
     const [route, setRoute] = useState<RouteView | null>(null);
@@ -38,6 +42,38 @@ export default function DriverDashboard() {
 
     const [driverName, setDriverName] = useState<string | null>(null);
     const [driverId, setDriverId] = useState<string>('');
+
+    // Modal state for failure reason
+    const [showFailureModal, setShowFailureModal] = useState(false);
+    const [failurePackageId, setFailurePackageId] = useState<string>('');
+    const [failureReason, setFailureReason] = useState<string>('');
+
+    const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+    const [pendingAssignment, setPendingAssignment] = useState<{ id: string; routeId: string; orders: unknown[] } | null>(null);
+
+    // Updated state variables for delivery workflow
+    const [isHeadingToWarehouse, setIsHeadingToWarehouse] = useState(false);
+    const [selectedPackage, setSelectedPackage] = useState<{id: string, address: string} | null>(null);
+    const [deliveryPhase, setDeliveryPhase] = useState<'none' | 'heading_to_warehouse' | 'picked_up' | 'delivering'>('none');
+    const [selectedPackages, setSelectedPackages] = useState<string[]>([]);
+    const WAREHOUSE_LOCATION = "University of Colombo, Sri Lanka";
+
+    // Multi-package selection handlers
+    const handleSelectPackage = (packageId: string, checked: boolean) => {
+        setSelectedPackages(prev => checked
+            ? [...prev, packageId]
+            : prev.filter(id => id !== packageId)
+        );
+    };
+
+    const handleStartDelivery = () => {
+        // Begin delivery workflow: show route to warehouse
+        setIsHeadingToWarehouse(true);
+        setDeliveryPhase('heading_to_warehouse');
+        setSelectedPackage(null); // Ensure no delivery address is set yet
+        setActiveTab('route');
+        console.log('Starting delivery for:', selectedPackages);
+    };
 
     async function loadOrders() {
         try {
@@ -53,6 +89,28 @@ export default function DriverDashboard() {
             assigned.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
             setOrders(assigned);
             setLastRefresh(new Date());
+
+            // Recalculate delivery phase after orders refresh
+            if (selectedPackages.length > 0) {
+                const selectedPkgs = assigned.flatMap(o => o.packages).filter(pkg => selectedPackages.includes(pkg.id));
+                const statuses = selectedPkgs.map(pkg => pkg.status);
+                if (selectedPkgs.length === 0) {
+                    setDeliveryPhase('none');
+                    setIsHeadingToWarehouse(false);
+                } else if (statuses.every(s => s === 'WAITING')) {
+                    setDeliveryPhase('heading_to_warehouse');
+                    setIsHeadingToWarehouse(true);
+                } else if (statuses.every(s => s === 'IN_TRANSIT')) {
+                    setDeliveryPhase('delivering');
+                    setIsHeadingToWarehouse(false);
+                } else if (statuses.every(s => s === 'DELIVERED' || s === 'FAILED')) {
+                    setDeliveryPhase('none');
+                    setIsHeadingToWarehouse(false);
+                }
+            } else {
+                setDeliveryPhase('none');
+                setIsHeadingToWarehouse(false);
+            }
 
             // No single selected route; we will list all orders below
             setRoute(null);
@@ -87,9 +145,11 @@ export default function DriverDashboard() {
             esRef.current = es;
             es.onmessage = (ev) => {
                 try {
-                    JSON.parse(ev.data);
-                    // Trigger refresh on any event
-                    triggerRefresh();
+                    const eventData = JSON.parse(ev.data);
+                    // Only trigger refresh if package statuses have changed
+                    if (eventData.type === 'package_status_update') {
+                        triggerRefresh();
+                    }
                 } catch (error) {
                     console.error('Failed to parse event:', error);
                 }
@@ -116,6 +176,12 @@ export default function DriverDashboard() {
                     photoUrl: undefined
                 })
             });
+            
+            // Reset delivery workflow
+            setDeliveryPhase('none');
+            setIsHeadingToWarehouse(false);
+            setSelectedPackage(null);
+            
             // Auto-refresh after delivery action
             setTimeout(() => {
                 triggerRefresh();
@@ -127,27 +193,87 @@ export default function DriverDashboard() {
 
     async function markOutForDelivery(packageId: string) {
         try {
-            await fetch('/api/driver/out', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-                body: JSON.stringify({ packageId })
+            // Find the package details
+            const pkg = orders.flatMap(o => o.packages).find(p => p.id === packageId);
+            if (!pkg) return;
+
+            // Set states for navigation to warehouse first
+            setSelectedPackage({
+                id: packageId,
+                address: pkg.address || 'No address provided'
             });
-            setTimeout(() => {
-                triggerRefresh();
-            }, 300);
+            setIsHeadingToWarehouse(true);
+            setDeliveryPhase('heading_to_warehouse');
+            
+            // Switch to route tab to show navigation
+            setActiveTab('route');
+
+            // DON'T mark as out for delivery yet - this will happen after warehouse pickup
+            // The handlePackagePickup function will handle the API call to mark as IN_TRANSIT
+            
+            console.log(`Starting delivery process for package ${packageId} - heading to warehouse first`);
+            
         } catch (error) {
-            console.error('Failed to mark out for delivery:', error);
+            console.error('Failed to start delivery process:', error);
         }
     }
 
-    async function markFailed(packageId: string) {
+    // Handle package pickup at warehouse - updated version
+    function handlePackagePickup() {
+        if (deliveryPhase === 'heading_to_warehouse') {
+            // All selected packages have been picked up from warehouse, now heading to delivery locations
+            setIsHeadingToWarehouse(false);
+            setDeliveryPhase('delivering');
+
+            // Update the status of all selected packages to IN_TRANSIT
+            Promise.all(selectedPackages.map(packageId =>
+                fetch('/api/driver/out', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
+                    body: JSON.stringify({ packageId })
+                })
+            )).then(() => {
+                // Ensure state is set before refreshing orders
+                setTimeout(() => {
+                    setIsHeadingToWarehouse(false);
+                    setDeliveryPhase('delivering');
+                    setActiveTab('route'); // Ensure route tab is active
+                    triggerRefresh();
+                }, 100);
+            }).catch(error => {
+                console.error('Failed to update package status:', error);
+            });
+
+            console.log(`Packages ${selectedPackages.join(', ')} picked up from warehouse, now calculating delivery route`);
+        }
+    }
+
+    function openFailureModal(packageId: string) {
+        setFailurePackageId(packageId);
+        setFailureReason('');
+        setShowFailureModal(true);
+    }
+
+    async function submitFailure() {
+        if (!failureReason.trim()) {
+            return; // Don't submit without a reason
+        }
+
         try {
-            const reason = prompt('Enter failure reason (e.g., recipient not available)') || 'Unknown';
             await fetch('/api/driver/fail', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-api-key': 'dev-key' },
-                body: JSON.stringify({ packageId, reason })
+                body: JSON.stringify({ packageId: failurePackageId, reason: failureReason })
             });
+            
+            setShowFailureModal(false);
+            setFailureReason('');
+            
+            // Reset delivery workflow
+            setDeliveryPhase('none');
+            setIsHeadingToWarehouse(false);
+            setSelectedPackage(null);
+            
             // Auto-refresh after failure action
             setTimeout(() => {
                 triggerRefresh();
@@ -177,10 +303,78 @@ export default function DriverDashboard() {
         );
     }
 
-    // Route status class helper not used in the multi-order view
-
     return (
         <div className="min-h-screen bg-slate-50 font-poppins">
+            {/* Failure Reason Modal */}
+            {showFailureModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/80">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 transform transition-all">
+                        <div className="px-6 py-5 border-b border-slate-100">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center space-x-3">
+                                    <div className="flex items-center justify-center w-10 h-10 bg-red-100 rounded-xl">
+                                        <XCircle className="w-6 h-6 text-red-600" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-slate-900">Mark Delivery as Failed</h3>
+                                </div>
+                            </div>
+                            <RouteMap
+                                packages={orders.flatMap(o => o.packages).filter(pkg => pkg.address !== undefined) as Array<{ id: string; address: string; status: string }>}
+                                driverId={driverId}
+                                warehouseLocation={WAREHOUSE_LOCATION}
+                                isHeadingToWarehouse={isHeadingToWarehouse}
+                                selectedPackage={selectedPackage}
+                                selectedPackages={selectedPackages}
+                                onLocationUpdate={async (location) => {
+                                    try {
+                                        await updateDoc(doc(db, 'users', driverId), {
+                                            currentLocation: location,
+                                            lastLocationUpdate: serverTimestamp()
+                                        });
+                                    } catch (error) {
+                                        console.error('Failed to update location:', error);
+                                    }
+                                }}
+                                onPackagePickedUp={handlePackagePickup}
+                            />
+                            <textarea
+                                value={failureReason}
+                                onChange={(e) => setFailureReason(e.target.value)}
+                                placeholder="e.g., Recipient not available, Incorrect address, Package refused..."
+                                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none transition-all duration-200"
+                                rows={4}
+                                autoFocus
+                            />
+                            {!failureReason.trim() && (
+                                <p className="mt-2 text-sm text-red-600">* Reason is required</p>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
+                            <div className="flex items-center justify-end space-x-3">
+                                <button
+                                    onClick={() => setShowFailureModal(false)}
+                                    className="px-4 py-2 text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-all duration-200 font-medium"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={submitFailure}
+                                    disabled={!failureReason.trim()}
+                                    className={`px-6 py-2 rounded-lg font-medium transition-all duration-200 flex items-center space-x-2 ${failureReason.trim()
+                                            ? 'bg-red-600 text-white hover:bg-red-700'
+                                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                        }`}
+                                >
+                                    <XCircle className="w-4 h-4" />
+                                    <span>Mark as Failed</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Modern Header */}
             <header className="bg-white border-b border-slate-200/60 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -397,6 +591,59 @@ export default function DriverDashboard() {
                             <div className="p-6">
                                 {activeTab === 'manifest' && (
                                     <div className="space-y-6">
+                                        {/* Delivery Status Card */}
+                                        {deliveryPhase !== 'none' && selectedPackage && (
+                                            <div className={`p-4 rounded-xl border-2 mb-6 ${
+                                                deliveryPhase === 'heading_to_warehouse' 
+                                                    ? 'border-blue-200 bg-blue-50' 
+                                                    : deliveryPhase === 'delivering' 
+                                                    ? 'border-green-200 bg-green-50'
+                                                    : 'border-amber-200 bg-amber-50'
+                                            }`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-3">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                                                            deliveryPhase === 'heading_to_warehouse' 
+                                                                ? 'bg-blue-100' 
+                                                                : deliveryPhase === 'delivering' 
+                                                                ? 'bg-green-100' 
+                                                                : 'bg-amber-100'
+                                                        }`}>
+                                                            <Truck className={`w-5 h-5 ${
+                                                                deliveryPhase === 'heading_to_warehouse' 
+                                                                    ? 'text-blue-600' 
+                                                                    : deliveryPhase === 'delivering' 
+                                                                    ? 'text-green-600' 
+                                                                    : 'text-amber-600'
+                                                            }`} />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-slate-900">
+                                                                Package #{selectedPackage.id.slice(-6)} - {
+                                                                    deliveryPhase === 'heading_to_warehouse' 
+                                                                        ? 'Heading to Warehouse'
+                                                                        : deliveryPhase === 'delivering'
+                                                                        ? 'Out for Delivery'
+                                                                        : 'In Transit'
+                                                                }
+                                                            </h4>
+                                                            <p className="text-sm text-slate-600">
+                                                                {deliveryPhase === 'heading_to_warehouse' 
+                                                                    ? 'Navigate to warehouse for package pickup'
+                                                                    : `Delivering to: ${selectedPackage.address}`}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setActiveTab('route')}
+                                                        className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+                                                    >
+                                                        View Route
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {orders.map((o) => (
                                             <div key={o.id} className="border rounded-2xl overflow-hidden">
                                                 <div className="px-6 py-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
@@ -410,9 +657,11 @@ export default function DriverDashboard() {
                                                     <DriverManifest
                                                         route={{ id: o.routeId!, driverId: driverId || 'unknown', status: 'ASSIGNED' }}
                                                         order={{ id: o.id, packages: o.packages }}
-                                                        onDeliver={(pkgId) => markDelivered(pkgId)}
-                                                        onFail={(pkgId) => markFailed(pkgId)}
-                                                        onOut={(pkgId) => markOutForDelivery(pkgId)}
+                                                        onDeliver={markDelivered}
+                                                        onFail={openFailureModal}
+                                                        selected={selectedPackages}
+                                                        onSelect={handleSelectPackage}
+                                                        onStartDelivery={handleStartDelivery}
                                                     />
                                                 </div>
                                             </div>
@@ -422,7 +671,38 @@ export default function DriverDashboard() {
 
                                 {activeTab === 'route' && (
                                     <div className="space-y-6">
-                                        <div className="text-sm text-slate-500">Route view is not available for multi-order list.</div>
+                                        {isHeadingToWarehouse && (
+                                            <button
+                                                onClick={handlePackagePickup}
+                                                className="px-4 py-2 bg-green-700 text-white rounded-lg text-sm font-semibold shadow hover:bg-green-800 transition-colors mb-4"
+                                            >
+                                                Picked Up
+                                            </button>
+                                        )}
+                                        <RouteMap
+                                            packages={orders
+                                                .flatMap(o => o.packages)
+                                                .filter(pkg =>
+                                                    selectedPackages.includes(pkg.id) &&
+                                                    pkg.address && typeof pkg.address === 'string' && pkg.address !== ''
+                                                ) as Array<{ id: string; address: string; status: string }>}
+                                            driverId={driverId}
+                                            warehouseLocation={WAREHOUSE_LOCATION}
+                                            isHeadingToWarehouse={isHeadingToWarehouse}
+                                            selectedPackage={selectedPackage}
+                                            selectedPackages={selectedPackages}
+                                            onLocationUpdate={async (location) => {
+                                                try {
+                                                    await updateDoc(doc(db, 'users', driverId), {
+                                                        currentLocation: location,
+                                                        lastLocationUpdate: serverTimestamp()
+                                                    });
+                                                } catch (error) {
+                                                    console.error('Failed to update location:', error);
+                                                }
+                                            }}
+                                            onPackagePickedUp={handlePackagePickup}
+                                        />
                                     </div>
                                 )}
 
@@ -455,9 +735,10 @@ export default function DriverDashboard() {
                                                             {pkg.status}
                                                         </div>
                                                     </div>
-                                                ))}
+                                                )
+                                            )}
                                             {allPkgs.filter(p => p.status === 'DELIVERED' || p.status === 'FAILED').length === 0 && (
-                                                <div className="text-center py-12 text-slate-500">
+                                                <div className="text-center py-12 text-slate-500">     
                                                     <PackageIcon className="w-12 h-12 mx-auto mb-4 text-slate-300" />
                                                     <p className="text-lg font-medium mb-2">No deliveries completed yet</p>
                                                     <p className="text-sm">Completed deliveries will appear here</p>
@@ -471,6 +752,42 @@ export default function DriverDashboard() {
                     </>
                 )}
             </div>
+
+            {showAssignmentModal && pendingAssignment && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80">
+                    <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+                        <h3 className="text-lg font-bold mb-4">New Route Assignment</h3>
+                        <p className="mb-4">You have been assigned {pendingAssignment.orders.length} new orders. Accept this route?</p>
+                        <div className="flex justify-end space-x-3">
+                            <button
+                                onClick={async () => {
+                                    await updateDoc(doc(db, 'assignments', `${pendingAssignment.id}`), {
+                                        status: 'REJECTED',
+                                        respondedAt: serverTimestamp()
+                                    });
+                                    setShowAssignmentModal(false);
+                                }}
+                                className="px-4 py-2 text-slate-700 hover:bg-slate-100 rounded-lg"
+                            >
+                                Reject
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    await updateDoc(doc(db, 'assignments', `${pendingAssignment.id}`), {
+                                        status: 'ACCEPTED',
+                                        respondedAt: serverTimestamp()
+                                    });
+                                    setShowAssignmentModal(false);
+                                    loadOrders(); // Refresh orders list
+                                }}
+                                className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-lg"
+                            >
+                                Accept
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

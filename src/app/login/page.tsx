@@ -28,13 +28,11 @@ export default function LoginPage() {
             return;
         }
 
-        // Hardcoded admin credentials check (fallback for demo). Prefer Firestore role or ADMIN_EMAILS.
-        const isDemoAdmin = email === "aadmin@gmail.com" && password === "admin@1234";
-
         try {
             // Sign in with Firebase Auth
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
+
             // Fetch user data from Firestore
             const userDoc = await getDoc(doc(db, "users", user.uid));
             if (!userDoc.exists()) {
@@ -42,17 +40,29 @@ export default function LoginPage() {
                 setIsLoading(false);
                 return;
             }
+
             const userData = userDoc.data();
-            // Resolve role with helper (supports email allowlist for admins)
-            const role = await fetchUserRole(user);
-            if (role === "admin" || isDemoAdmin) {
+            const accountType = userData.accountType;
+
+            // Direct routing based on accountType from Firestore
+            if (accountType === "admin") {
                 router.push("/admin");
-            } else if (role === "client" || userData.accountType === "client") {
+            } else if (accountType === "client") {
                 router.push("/client");
-            } else if (role === "driver" || userData.accountType === "driver") {
+            } else if (accountType === "driver") {
                 router.push("/driver");
             } else {
-                router.push("/");
+                // Fallback: check role using helper function
+                const role = await fetchUserRole(user);
+                if (role === "admin") {
+                    router.push("/admin");
+                } else if (role === "client") {
+                    router.push("/client");
+                } else if (role === "driver") {
+                    router.push("/driver");
+                } else {
+                    router.push("/");
+                }
             }
         } catch (err) {
             if (err instanceof Error) {
@@ -81,6 +91,9 @@ export default function LoginPage() {
                     </div>
 
                     <div className="text-center mb-8">
+                        <div className="flex justify-center mb-4">
+                            <img src="/logo.png" alt="Company Logo" width={96} height={96} />
+                        </div>
                         <h2 className="text-3xl font-bold text-gray-900 mb-2 font-lora">Welcome Back</h2>
                         <p className="text-gray-600">Sign in to continue</p>
                     </div>
@@ -101,7 +114,7 @@ export default function LoginPage() {
                                 <div className="w-full border-t border-gray-300" />
                             </div>
                             <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-white px-3 text-gray-500 font-medium">Or sign in with email</span>
+                                <span className="bg-white px-3 text-gray-500 font-medium">Sign in with email</span>
                             </div>
                         </div>
 
@@ -189,43 +202,13 @@ export default function LoginPage() {
                     </div>
 
                     {/* Sign Up Link */}
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center space-y-2">
                         <p className="text-sm text-gray-600">
-                            Don't have an account?{" "}
+                            Don&apos;t have an account?{" "}
                             <a href="/register" className="text-purple-600 hover:text-purple-700 font-semibold">
                                 Create account
                             </a>
                         </p>
-                    </div>
-
-                    {/* Professional Access */}
-                    <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-100">
-                        <p className="text-sm font-medium text-purple-900 mb-2">User Dashboard</p>
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <a
-                                href="/register?type=client"
-                                className="flex-1 text-center px-3 py-2 bg-white border border-purple-200 rounded-lg text-sm text-purple-700 hover:bg-purple-100 transition-colors"
-                            >
-                                Client Registration
-                            </a>
-                            <a
-                                href="/register?type=driver"
-                                className="flex-1 text-center px-3 py-2 bg-white border border-purple-200 rounded-lg text-sm text-purple-700 hover:bg-purple-100 transition-colors"
-                            >
-                                Driver Registration
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* Footer Links */}
-                    <div className="mt-6 text-center text-xs text-gray-500">
-                        <div className="flex justify-center space-x-4">
-                            <a href="/privacy" className="hover:text-gray-700">Privacy Policy</a>
-                            <span>•</span>
-                            <a href="/terms" className="hover:text-gray-700">Terms of Service</a>
-                            <span>•</span>
-                            <a href="/help" className="hover:text-gray-700">Help Center</a>
-                        </div>
                     </div>
                 </div>
             </div>

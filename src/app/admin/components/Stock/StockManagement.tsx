@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/app/lib/firebase';
-import { collection, addDoc, onSnapshot, serverTimestamp, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, serverTimestamp, query, orderBy, Timestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // Define the Stock item interface
 interface StockItem {
@@ -19,6 +19,8 @@ export default function StockManagement() {
     const [stockItems, setStockItems] = useState<StockItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [newItem, setNewItem] = useState<Omit<StockItem, 'id' | 'updatedAt'>>({
         name: '',
@@ -27,7 +29,10 @@ export default function StockManagement() {
         unit: '',
         price: 0
     });
+    const [editItem, setEditItem] = useState<StockItem | null>(null);
     const [formError, setFormError] = useState('');
+    const [editError, setEditError] = useState('');
+    const [deleteError, setDeleteError] = useState('');
     const [loadError, setLoadError] = useState('');
 
     // Load stock data (real-time subscription)
@@ -166,8 +171,14 @@ export default function StockManagement() {
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.price}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(item.updatedAt).toLocaleDateString()}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button className="text-indigo-400 cursor-not-allowed mr-3" disabled>Edit</button>
-                                            <button className="text-red-400 cursor-not-allowed" disabled>Delete</button>
+                                            <button
+                                                className="text-indigo-600 hover:text-indigo-800 mr-3"
+                                                onClick={() => { setEditItem(item); setIsEditModalOpen(true); setEditError(''); }}
+                                            >Edit</button>
+                                            <button
+                                                className="text-red-600 hover:text-red-800"
+                                                onClick={() => { setEditItem(item); setIsDeleteModalOpen(true); setDeleteError(''); }}
+                                            >Delete</button>
                                         </td>
                                     </tr>
                                 ))}
@@ -259,6 +270,161 @@ export default function StockManagement() {
                                 className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-60"
                             >
                                 {isSaving ? 'Saving...' : 'Add Item'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Stock Modal */}
+            {isEditModalOpen && editItem && (
+                <div className="fixed inset-0 bg-slate-50/90 flex items-center justify-center z-50">
+                    <div className="bg-white shadow-xl rounded-lg p-8 max-w-2xl w-full mx-4">
+                        <h2 className="text-2xl font-bold mb-6 text-gray-900">Edit Stock Item</h2>
+
+                        {editError && (
+                            <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+                                <p className="text-sm text-red-700">{editError}</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-4 text-gray-700">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
+                                <input
+                                    type="text"
+                                    value={editItem.name}
+                                    onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter item name"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                                <input
+                                    type="text"
+                                    value={editItem.category}
+                                    onChange={(e) => setEditItem({ ...editItem, category: e.target.value })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter category"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                                    <input
+                                        type="number"
+                                        value={editItem.quantity}
+                                        onChange={(e) => setEditItem({ ...editItem, quantity: parseInt(e.target.value || '0', 10) })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Enter quantity"
+                                        min={0}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+                                    <input
+                                        type="text"
+                                        value={editItem.unit}
+                                        onChange={(e) => setEditItem({ ...editItem, unit: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="e.g., pcs, kg, liters"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                                <input
+                                    type="text"
+                                    value={editItem.price}
+                                    onChange={(e) => setEditItem({ ...editItem, price: parseFloat(e.target.value) })}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder="Enter unit Price"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 mt-6">
+                            <button
+                                onClick={() => { setIsEditModalOpen(false); setEditItem(null); setEditError(''); }}
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                                disabled={isSaving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setEditError('');
+                                    setIsSaving(true);
+                                    try {
+                                        if (!editItem.name.trim()) throw new Error('Item name is required');
+                                        if (!editItem.category.trim()) throw new Error('Category is required');
+                                        if (editItem.quantity <= 0 || Number.isNaN(editItem.quantity)) throw new Error('Quantity must be a positive number');
+                                        if (!editItem.unit.trim()) throw new Error('Unit is required');
+                                        if (editItem.price <= 0 || Number.isNaN(editItem.price)) throw new Error('Price must be a positive number');
+                                        await updateDoc(doc(db, 'stock', editItem.id), {
+                                            name: editItem.name.trim(),
+                                            category: editItem.category.trim(),
+                                            quantity: editItem.quantity,
+                                            unit: editItem.unit.trim(),
+                                            price: editItem.price,
+                                            updatedAt: serverTimestamp(),
+                                        });
+                                        setIsEditModalOpen(false);
+                                        setEditItem(null);
+                                    } catch (e: unknown) {
+                                        setEditError(e instanceof Error ? e.message : 'Failed to update item.');
+                                    } finally {
+                                        setIsSaving(false);
+                                    }
+                                }}
+                                disabled={isSaving}
+                                className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-60"
+                            >
+                                {isSaving ? 'Saving...' : 'Save Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Stock Modal */}
+            {isDeleteModalOpen && editItem && (
+                <div className="fixed inset-0 bg-slate-50/90 flex items-center justify-center z-50">
+                    <div className="bg-white shadow-xl rounded-lg p-8 max-w-md w-full mx-4">
+                        <h2 className="text-2xl font-bold mb-6 text-gray-900">Delete Stock Item</h2>
+                        {deleteError && (
+                            <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+                                <p className="text-sm text-red-700">{deleteError}</p>
+                            </div>
+                        )}
+                        <p className="mb-6 text-gray-700">Are you sure you want to delete <span className="font-semibold">{editItem.name}</span>? This action cannot be undone.</p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => { setIsDeleteModalOpen(false); setEditItem(null); setDeleteError(''); }}
+                                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                                disabled={isSaving}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setDeleteError('');
+                                    setIsSaving(true);
+                                    try {
+                                        await deleteDoc(doc(db, 'stock', editItem.id));
+                                        setIsDeleteModalOpen(false);
+                                        setEditItem(null);
+                                    } catch (e: unknown) {
+                                        setDeleteError(e instanceof Error ? e.message : 'Failed to delete item.');
+                                    } finally {
+                                        setIsSaving(false);
+                                    }
+                                }}
+                                disabled={isSaving}
+                                className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-60"
+                            >
+                                {isSaving ? 'Deleting...' : 'Delete'}
                             </button>
                         </div>
                     </div>

@@ -1,4 +1,5 @@
 "use client";
+import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, Check, X, User, Mail, Lock, Shield, Heart, Sparkles, Phone, Truck, Building2, MapPin, IdCard } from "lucide-react";
 import { auth, db } from "@/app/lib/firebase";
@@ -6,7 +7,7 @@ import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function SignUpPage() {
+function RegisterForm() {
     const [fullName, setFullName] = useState("");
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
@@ -93,7 +94,7 @@ export default function SignUpPage() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
             await updateProfile(user, { displayName: fullName });
-            const baseData: Record<string, any> = {
+            const baseData: Record<string, unknown> = {
                 uid: user.uid,
                 fullName,
                 email,
@@ -340,7 +341,7 @@ export default function SignUpPage() {
                                     ) : (
                                         <>
                                             <X className="w-3 h-3 text-red-500 mr-1" />
-                                            <span className="text-red-600">Passwords don't match</span>
+                                            <span className="text-red-600">Passwords don&apos;t match</span>
                                         </>
                                     )}
                                 </div>
@@ -548,5 +549,13 @@ export default function SignUpPage() {
                 </div>
             </div>
         </div >
+    );
+}
+
+export default function SignUpPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <RegisterForm />
+        </Suspense>
     );
 }

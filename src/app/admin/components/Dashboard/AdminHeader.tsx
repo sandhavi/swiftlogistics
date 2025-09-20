@@ -1,21 +1,57 @@
 "use client";
 
-import { useState } from 'react';
-import { auth } from '@/app/lib/firebase';
-import { signOut } from 'firebase/auth';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { auth, db } from '@/app/lib/firebase';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function AdminHeader() {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
+    const [adminName, setAdminName] = useState('');
+    const [adminEmail, setAdminEmail] = useState('');
+    const [adminInitial, setAdminInitial] = useState('A');
     const router = useRouter();
 
+    useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // Get user data from Firestore
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                    const userData = userDoc.data();
+                    const fullName = userData.fullName || userData.name || 'Admin User';
+                    setAdminName(fullName);
+                    setAdminEmail(user.email || '');
+                    // Get first letter of name for avatar
+                    setAdminInitial(fullName.charAt(0).toUpperCase());
+                } else {
+                    // Fallback to auth data
+                    setAdminEmail(user.email || '');
+                    if (user.displayName) {
+                        setAdminName(user.displayName);
+                        setAdminInitial(user.displayName.charAt(0).toUpperCase());
+                    }
+                }
+            }
+        });
+
+        return () => unsubscribe();
+    }, []);
+
     const handleLogout = async () => {
-        // For the admin user (which was hardcoded), we just redirect to login
-        router.push('/login');
+        try {
+            await signOut(auth);
+            router.push('/login');
+        } catch (error) {
+            console.error('Error signing out:', error);
+            // Still redirect even if signout fails
+            router.push('/login');
+        }
     };
 
     return (
-        <header className="bg-white shadow-sm border-b border-gray-200">
+        <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
             <div className="mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between h-16">
                     <div className="flex items-center">
@@ -36,7 +72,7 @@ export default function AdminHeader() {
                                 >
                                     <span className="sr-only">Open user menu</span>
                                     <div className="h-8 w-8 rounded-full bg-purple-200 flex items-center justify-center text-purple-600 font-medium">
-                                        A
+                                        {adminInitial}
                                     </div>
                                 </button>
                             </div>
@@ -49,8 +85,8 @@ export default function AdminHeader() {
                                 >
                                     <div className="py-1" role="none">
                                         <div className="block px-4 py-2 text-sm text-gray-700">
-                                            <span className="block font-medium">Admin User</span>
-                                            <span className="block text-gray-500">aadmin@gmail.com</span>
+                                            <span className="block font-medium">{adminName || 'Admin User'}</span>
+                                            <span className="block text-gray-500 text-xs">{adminEmail}</span>
                                         </div>
                                         <button
                                             onClick={handleLogout}

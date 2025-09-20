@@ -71,6 +71,7 @@ export default function RootLayout({
     <html lang="en" className="h-full">
       <head>
         <link rel="icon" type="image/x-icon" href="/favicon.png" />
+        
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} ${poppins.variable} ${lora.variable} bg-gray-50 text-gray-900 min-h-full`}>
         <div className="min-h-screen flex flex-col">

@@ -8,7 +8,9 @@ interface ManifestProps {
     order: OrderView | null;
     onDeliver: (packageId: string) => void;
     onFail: (packageId: string) => void;
-    onOut: (packageId: string) => void;
+    selected: string[];
+    onSelect: (packageId: string, checked: boolean) => void;
+    onStartDelivery: () => void;
 }
 
 const getStatusColor = (status: string) => {
@@ -56,7 +58,7 @@ const getStatusIcon = (status: string) => {
     }
 };
 
-export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDeliver, onFail, onOut }) => {
+export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDeliver, onFail, selected, onSelect, onStartDelivery }) => {
     if (!route || !order) return null;
 
     const pendingPackages = order.packages.filter(p => p.status === 'WAITING' || p.status === 'IN_TRANSIT');
@@ -85,6 +87,15 @@ export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDelive
                     <div className="space-y-4">
                         {pendingPackages.map((pkg) => (
                             <div key={pkg.id} className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                                <div className="flex items-center mb-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={selected.includes(pkg.id)}
+                                        onChange={e => onSelect(pkg.id, e.target.checked)}
+                                        className="mr-2"
+                                    />
+                                    <span className="text-sm text-gray-700">Select for delivery</span>
+                                </div>
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
                                         <div className="flex items-center mb-3">
@@ -119,15 +130,6 @@ export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDelive
 
                                     <div className="flex flex-col space-y-2 ml-4">
                                         <button
-                                            onClick={() => onOut(pkg.id)}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center space-x-2"
-                                        >
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                            </svg>
-                                            <span>Out for delivery</span>
-                                        </button>
-                                        <button
                                             onClick={() => onDeliver(pkg.id)}
                                             className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center space-x-2"
                                         >
@@ -153,7 +155,17 @@ export const DriverManifest: React.FC<ManifestProps> = ({ route, order, onDelive
                 </div>
             )}
 
-            {/* Completed Deliveries */}
+            {/* Start Delivery Button */}
+            {selected.length > 0 && (
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={onStartDelivery}
+                        className="px-6 py-3 bg-blue-700 text-white rounded-lg font-bold hover:bg-blue-800 transition-colors"
+                    >
+                        Start Delivery ({selected.length} package{selected.length > 1 ? 's' : ''})
+                    </button>
+                </div>
+            )}
             {completedPackages.length > 0 && (
                 <div>
                     <h4 className="text-lg font-medium text-gray-900 mb-4">Completed Deliveries</h4>
